@@ -196,6 +196,30 @@ def test_fast_source_uses_seeded_graphify_and_invalid_decisions_fall_back(pilot_
                                                    cwd=repo, text=True).strip())
     assert sidecar["selected_nodes"] == [candidates[0]["node_id"]]
 
+    confirmed = query_with_decisions(
+        graph_path, repo,
+        {"id": "q1", "question": "same_label", "observations": [
+            {"id": "o1", "source_ref": "synthetic-o1", "summary": "same_label"},
+        ]},
+        candidates,
+        {(candidates[0]["node_id"], "o1"): {"choice": "relevant", "probability": .95}},
+        eligible_node_ids={candidates[0]["node_id"]}, threshold=.8,
+        candidate_mode="fast-source", allow_source_seeds=False,
+    )
+    assert "Start (given):" in confirmed
+
+    rejected = query_with_decisions(
+        graph_path, repo,
+        {"id": "q1", "question": "same_label", "observations": [
+            {"id": "o1", "source_ref": "synthetic-o1", "summary": "same_label"},
+        ]},
+        candidates,
+        {(candidates[0]["node_id"], "o1"): {"choice": "unrelated", "probability": .95}},
+        eligible_node_ids={candidates[0]["node_id"]}, threshold=.8,
+        candidate_mode="fast-source", allow_source_seeds=False,
+    )
+    assert "Start (given):" not in rejected
+
     invalid = query_with_decisions(
         graph_path, repo, case, candidates,
         {(candidates[0]["node_id"], "missing"): {"choice": "relevant", "probability": 1}},

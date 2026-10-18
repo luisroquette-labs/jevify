@@ -308,17 +308,20 @@ def query_with_decisions(
     """Run Graphify with validated source seeds or promoted decision seeds."""
     observations = case["observations"]
     valid = bool(answers) and _answers_valid(candidates, observations, answers, eligible_node_ids)
-    source_seeded = (candidate_mode == "fast-source" and allow_source_seeds and not answers
-                     and bool(candidates) and all(item.get("source_scoped") for item in candidates[:3]))
-    if not answers and not source_seeded:
-        print("Jev unavailable; using unseeded Graphify query", file=sys.stderr)
-    elif answers and not valid:
-        print("Invalid or incomplete decisions; using unseeded Graphify query", file=sys.stderr)
     normalized = answers if valid else {}
     ordered, suggestions = apply_decisions(
         candidates, observations, normalized, eligible_node_ids=eligible_node_ids,
         threshold=threshold,
     )
+    source_seeded = (
+        candidate_mode == "fast-source" and bool(candidates)
+        and all(item.get("source_scoped") for item in candidates[:3])
+        and ((allow_source_seeds and not answers) or (valid and bool(suggestions)))
+    )
+    if not answers and not source_seeded:
+        print("Jev unavailable; using unseeded Graphify query", file=sys.stderr)
+    elif answers and not valid:
+        print("Invalid or incomplete decisions; using unseeded Graphify query", file=sys.stderr)
     assisted = [item["node_id"] for item in ordered[:3]] != [item["node_id"] for item in candidates[:3]]
     selected = [item["node_id"] for item in ordered[:3]] if assisted or source_seeded else []
     args = [sys.executable, "-m", "graphify", "query", case["question"],
