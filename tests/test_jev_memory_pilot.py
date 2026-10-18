@@ -108,6 +108,37 @@ def test_memory_candidate_pool_keeps_question_seven_and_fills_duplicate_slots(
         candidate_pool(graph_path, repo, "question", ["summary"] * 4)
 
 
+def test_source_backed_memory_candidates_keep_question_eight(pilot_repo, monkeypatch):
+    repo, graph_path, data = pilot_repo
+    data["nodes"] = [
+        {"id": f"q{i}", "label": f"q{i}", "source_file": "a.py", "source_location": "L1"}
+        for i in range(10)
+    ] + [
+        {"id": name, "label": name, "source_file": "b.py", "source_location": "L1"}
+        for name in ("source1", "source2", "source3")
+    ]
+    graph_path.write_text(json.dumps(data))
+
+    def score(_graph, terms, *, collect_per_term_seeds):
+        assert not collect_per_term_seeds
+        ids = (["q2", "source1", "q8", "source2", "source3"]
+               if "summary" in terms else [f"q{i}" for i in range(10)])
+        return SimpleNamespace(ranked=[(10 - i, nid) for i, nid in enumerate(ids)])
+
+    monkeypatch.setattr("tools.jev_memory_pilot._score_query", score)
+    rows = candidate_pool(graph_path, repo, "question", ["summary"], source_paths=["b.py"])
+    assert [row["node_id"] for row in rows] == [
+        "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "source1", "source2",
+    ]
+    assert len(rows) == 10
+    assert [row["node_id"] for row in candidate_pool(
+        graph_path, repo, "question", ["summary"], source_paths=["missing.py"],
+    )] == ["q0", "q1", "q2", "q3", "q4", "q5", "q6", "source1", "q8", "q7"]
+    for path in ("../b.py", "/b.py", "b\\.py", "", 42):
+        with pytest.raises(ValueError, match="source paths"):
+            candidate_pool(graph_path, repo, "question", ["summary"], source_paths=[path])
+
+
 def test_load_case_checks_full_graph_not_candidate_pool(tmp_path):
     path = tmp_path / "cases.json"
     data = {
@@ -126,6 +157,15 @@ def test_load_case_checks_full_graph_not_candidate_pool(tmp_path):
         load_case(path, "q1", {"candidate"}, "demo")
     with pytest.raises(ValueError, match="project"):
         load_case(path, "q1", {"node-outside-top-ten"}, "other")
+    data["observations"][0]["source_paths"] = ["src/handler.py"]
+    path.write_text(json.dumps(data))
+    assert load_case(path, "q1", {"node-outside-top-ten"}, "demo")["observations"][0][
+        "source_paths"
+    ] == ["src/handler.py"]
+    data["observations"][0]["source_paths"] = ["../private.py"]
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="source paths"):
+        load_case(path, "q1", {"node-outside-top-ten"}, "demo")
 
 
 @pytest.mark.parametrize(

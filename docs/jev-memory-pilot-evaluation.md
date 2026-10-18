@@ -35,6 +35,12 @@ The frozen second cohort was reviewed against its pinned AST graph and a clean s
 
 The first seven candidates are identical by design, so no scored case gained or lost a relevant node in the top five. The extra memory candidates only raise the top-ten ceiling for a later reranker. A one-case top-ten gain does not establish better answers. One agent supplied both arms' labels, the review was not independent, the cohort selected source-bearing memories, and relevant nodes outside the reviewed sources or candidate union may remain unlabeled. This is an exploratory candidate-pool check, not the 30-question paired Jev evaluation below. Jev suggestions, answer quality, and latency were not measured; paid request count and actual cost were zero. The flag remains experimental.
 
+## Source-provenance follow-up (exploratory)
+
+An updated memory mode can use reviewed observation `source_paths` as local retrieval hints. It preserves the question's first eight nodes and fills two slots with memory-scored nodes in those cited files, falling back to the earlier 7+3 rule when no scored cited-file node exists. The original question mode is unchanged. On the same 18 scored cases above, a relevant top-ten candidate appeared in 10/16 positive cases, versus 8/16 for question mode. Mean candidate recall rose from 0.176 to 0.314; mean precision@5 remained 0.078 in both modes. Five cases gained relevant top-ten nodes and one lost one. The first five nodes remained unchanged in every scored case.
+
+This rule was selected after examining several allocations on the same source-bearing cohort, so these numbers are **design feedback, not an independent validation**. The cited paths were reviewed locally, and no private path or memory text was committed. No Jev call or answer-quality or end-to-end speed comparison ran. The five-stage [roadmap](jeviphy-roadmap.md) requires independent evaluation and matched Graphify benchmarks before any product claim.
+
 ## Frozen labeling rule for the real cohort
 
 1. Select one repository with a graph pinned to its source commit. Select observations through the supported memory gateway, review each summary for sensitive content, and keep all records and labels under a mode-0700 directory outside Git worktrees.

@@ -31,7 +31,8 @@ def test_make_request_uses_committed_excerpt_and_allowlisted_observation(source_
                   {"node_id": "bad", "label": "bad", "type": "function",
                    "source_file": "../secret.py", "source_location": "L1"}]
     observations = [{"id": "o1", "summary": "Redacted synthetic observation.",
-                     "private_extra": "canary-must-not-leak", "source_ref": "synthetic-o1"}]
+                     "private_extra": "canary-must-not-leak", "source_ref": "synthetic-o1",
+                     "source_paths": ["private-path-canary.py"]}]
     (source_repo / "handler.py").write_text("PRIVATE_WORKTREE_TEXT\n")
     payload, pair_map = make_request(source_repo, "Where is the handler?", candidates, observations)
     encoded = json.dumps(payload)
@@ -39,6 +40,7 @@ def test_make_request_uses_committed_excerpt_and_allowlisted_observation(source_
     assert payload["state"]["nodes"][0]["excerpt"] == "def handle_request(): return 1"
     assert "PRIVATE_WORKTREE_TEXT" not in encoded
     assert "canary-must-not-leak" not in encoded
+    assert "private-path-canary.py" not in encoded
     assert "../secret.py" not in encoded
     assert len(payload["questions"]) == 1
     with pytest.raises(ValueError, match="duplicate"):
