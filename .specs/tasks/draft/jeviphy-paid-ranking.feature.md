@@ -1,6 +1,6 @@
 ---
 title: Evaluate Jev decisions on a bounded mixed candidate pool
-status: draft
+status: failed
 ---
 
 # Stage 3: paired Jev ranking pilot
@@ -25,3 +25,9 @@ Prepare the exact private payload inventory and assert its hash, node order, mod
 ## Test and validation
 
 Test malformed payloads, duplicate attempts, failed/partial responses, cost accounting, and the no-retry boundary with a local stub. Run all Python gates through `mac-gate`. Compare baseline and Jev precision@5 and recall@5, non-gold suggestions for review, success/failure counts, latency, and total actual cost. Stage 3 passes only as a technical model measurement. An independent memory cohort and complete-workflow gate remain necessary for stages 4–5.
+
+## Result
+
+The frozen run completed 19/19 callable requests and skipped the one payload without a committed excerpt. The private journal SHA-256 is `56a9559b766ee3c2594e8542dea11ac16a94396e398d0982666d524bac1936b8`. Candidate recall was 13/19, while top-five gold hits remained **4/19 before and after Jev**. Jev produced no above-threshold relevant suggestions. API latency was 649.74 ms p50 and 1,083.09 ms p95; actual cost was US$0.00153493.
+
+Stage 3 therefore **failed**: Jev did not improve ranking and its network latency made this workflow slower. The source summary used in this ablation deliberately removed the target name and did not transmit the reviewed source path, so the negative result applies to this exact low-information payload. It does not establish that every possible Jev payload is ineffective. No retry or additional paid tuning is justified by this cohort.

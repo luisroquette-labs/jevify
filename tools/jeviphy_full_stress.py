@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import platform
 import random
 import statistics
 import subprocess
@@ -28,15 +29,31 @@ def answer_hits(output: str, gold: list[str], graph) -> int:
     )
 
 
-def source_p95_advantage_interval(rows: list[dict], *, resamples: int = 10_000) -> list[float]:
+def validate_frozen_cases(cases: list[dict], graph) -> None:
+    """Reject labels leaked into prompts and gold nodes outside cited sources."""
+    for case in cases:
+        text = f'{case["question"]} {case["summary"]}'.casefold()
+        cited = set(case["source_paths"])
+        for node_id in case["gold_node_ids"]:
+            node = graph.nodes[node_id]
+            name = node.get("label", "").removesuffix("()").lstrip(".").casefold()
+            if name and name in text:
+                raise ValueError(f'gold label leaked into case {case["id"]}')
+            if node.get("source_file") not in cited:
+                raise ValueError(f'gold source differs from case {case["id"]}')
+
+
+def p95_advantage_interval(
+    rows: list[dict], *, source_only: bool = False, resamples: int = 10_000,
+) -> list[float]:
     """Resample cases, keeping their repeated paired timings together."""
     by_case = defaultdict(list)
     for row in rows:
-        if row["source_backed"]:
+        if not source_only or row["source_backed"]:
             by_case[row["id"]].append(row)
     ids = sorted(by_case)
     if not ids:
-        raise ValueError("source-backed cases are required")
+        raise ValueError("matching cases are required")
     rng = random.Random(20261018)
     advantages = []
     for _ in range(resamples):
@@ -48,6 +65,14 @@ def source_p95_advantage_interval(rows: list[dict], *, resamples: int = 10_000) 
     return [round(percentile(advantages, quantile), 2) for quantile in (.025, .975)]
 
 
+def source_p95_advantage_interval(rows: list[dict], *, resamples: int = 10_000) -> list[float]:
+    """Backward-compatible source-only interval used by existing reports."""
+    try:
+        return p95_advantage_interval(rows, source_only=True, resamples=resamples)
+    except ValueError as error:
+        raise ValueError("source-backed cases are required") from error
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -55,6 +80,8 @@ def main() -> None:
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--passes", type=int, default=3)
+    parser.add_argument("--source-cases", type=int, default=20)
+    parser.add_argument("--control-cases", type=int, default=10)
     args = parser.parse_args()
     if args.passes < 3:
         parser.error("at least three passes are required")
@@ -64,14 +91,17 @@ def main() -> None:
         parser.error("input manifest must be mode 0600")
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     cases = manifest["cases"]
-    if len(cases) != 30 or len({case["id"] for case in cases}) != 30:
-        parser.error("expected 30 distinct frozen cases")
-    if (sum(case["source_backed"] for case in cases) != 20
+    expected_cases = args.source_cases + args.control_cases
+    if (args.source_cases < 1 or args.control_cases < 1
+            or len(cases) != expected_cases
+            or len({case["id"] for case in cases}) != expected_cases):
+        parser.error("manifest case counts differ from the requested frozen cohort")
+    if (sum(case["source_backed"] for case in cases) != args.source_cases
             or any(not case["source_paths"] or not case["gold_node_ids"]
                    for case in cases if case["source_backed"])
             or any(case["source_paths"] or case["gold_node_ids"]
                    for case in cases if not case["source_backed"])):
-        parser.error("expected 20 labeled source cases and ten empty controls")
+        parser.error("manifest source/control shape differs from the requested cohort")
     graph_hash = hashlib.sha256(args.graph.read_bytes()).hexdigest()
     source_commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=args.repo, text=True,
@@ -83,6 +113,10 @@ def main() -> None:
     graph = _read_graph(str(args.graph))
     if any(nid not in graph for case in cases for nid in case["gold_node_ids"]):
         parser.error("gold label is absent from the pinned graph")
+    try:
+        validate_frozen_cases(cases, graph)
+    except ValueError as error:
+        parser.error(str(error))
 
     semantic = []
     for case in cases:
@@ -161,12 +195,17 @@ def main() -> None:
         "source_gains": sum(row["jeviphy_hits"] > row["baseline_hits"] for row in semantic if row["source_backed"]),
         "source_losses": sum(row["jeviphy_hits"] < row["baseline_hits"] for row in semantic if row["source_backed"]),
         "source_scoped_count": sum(row["source_scoped"] for row in semantic if row["source_backed"]),
-        "first_pass_baseline_answer_hits": sum(row["baseline_answer_hits"] for row in rows[:30]),
-        "first_pass_jeviphy_answer_hits": sum(row["jeviphy_answer_hits"] for row in rows[:30]),
+        "first_pass_baseline_answer_hits": sum(
+            row["baseline_answer_hits"] for row in rows[:len(cases)]
+        ),
+        "first_pass_jeviphy_answer_hits": sum(
+            row["jeviphy_answer_hits"] for row in rows[:len(cases)]
+        ),
         "baseline_p50_ms": round(statistics.median(baseline_ms), 2),
         "jeviphy_p50_ms": round(statistics.median(jeviphy_ms), 2),
         "baseline_p95_ms": round(percentile(baseline_ms, .95), 2),
         "jeviphy_p95_ms": round(percentile(jeviphy_ms, .95), 2),
+        "pooled_p95_advantage_ci95_ms": p95_advantage_interval(rows),
         "jeviphy_faster_pairs": sum(a < b for a, b in zip(jeviphy_ms, baseline_ms)),
         "source_baseline_p50_ms": round(percentile([row["baseline_ms"] for row in source_rows], .5), 2),
         "source_jeviphy_p50_ms": round(percentile([row["jeviphy_ms"] for row in source_rows], .5), 2),
@@ -183,6 +222,10 @@ def main() -> None:
     report = {
         "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(),
         "graph_sha256": graph_hash, "source_commit": source_commit,
+        "runner_commit": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[1], text=True,
+        ).strip(),
+        "python": platform.python_version(), "machine": platform.machine(),
         "summary": summary, "semantic": semantic, "rows": rows,
         "first_pass_answers": first_answers,
     }
