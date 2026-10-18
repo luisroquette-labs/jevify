@@ -114,6 +114,14 @@ def test_malformed_manifest_does_not_crash(tmp_path):
     assert r["nodes"] == [] and r["edges"] == []
 
 
+def test_pom_rejects_entity_expansion(tmp_path):
+    p = _write(tmp_path / "pom.xml", '<!DOCTYPE project [<!ENTITY x "expanded">]>'
+               '<project><artifactId>&x;</artifactId></project>')
+    result = extract_package_manifest(p)
+    assert result["nodes"] == [] and result["edges"] == []
+    assert "manifest parse error" in result["error"]
+
+
 # ── #2434: Cargo.toml joins pyproject.toml/go.mod/pom.xml as a package manifest ─
 
 def test_cargo_classifies_as_code_manifest(tmp_path):

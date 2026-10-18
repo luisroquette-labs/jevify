@@ -1,13 +1,14 @@
 """The Jev boundary is fully mocked: these tests never make a paid request."""
 
 import json
+import io
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from tools.jev_memory_pilot_api import call_jev, decide_once, make_request, parse_answers
+from tools.jev_memory_pilot_api import _NoRedirect, call_jev, decide_once, make_request, parse_answers
 
 
 @pytest.fixture
@@ -48,14 +49,19 @@ def test_make_request_uses_committed_excerpt_and_allowlisted_observation(source_
 
 def test_call_jev_makes_one_request_and_never_retries():
     payload = {"model": "typesafe/jev-1.14", "state": {}, "questions": {"p000": {"type": "choice"}}}
-    with patch("urllib.request.urlopen", side_effect=TimeoutError) as post:
+    with patch("urllib.request.OpenerDirector.open", side_effect=TimeoutError) as post:
         with pytest.raises(TimeoutError):
             call_jev(payload, "test-key")
     assert post.call_count == 1
-    with patch("urllib.request.urlopen") as post:
+    with patch("urllib.request.OpenerDirector.open") as post:
         with pytest.raises(ValueError, match="24 KiB"):
             call_jev({**payload, "state": {"large": "x" * 25_000}}, "test-key")
     post.assert_not_called()
+    with patch("urllib.request.OpenerDirector.open", return_value=io.BytesIO(b"x" * (1024 * 1024 + 1))) as post:
+        with pytest.raises(ValueError, match="1 MiB"):
+            call_jev(payload, "test-key")
+    post.assert_called_once()
+    assert _NoRedirect().redirect_request(None, None, 302, "", {}, "https://other.invalid") is None
 
 
 def test_parse_answers_requires_exact_complete_typed_response():
@@ -71,7 +77,9 @@ def test_parse_answers_requires_exact_complete_typed_response():
         {**valid, "answers": {}},
         {**valid, "answers": {**valid["answers"], "extra": valid["answers"]["p000"]}},
         {**valid, "usage": {}},
+        {**valid, "model": "typesafe/jev-1.140"},
         {**valid, "answers": {"p000": {**valid["answers"]["p000"], "type": "score"}}},
+        {**valid, "answers": {"p000": {**valid["answers"]["p000"], "choice": ["relevant"]}}},
         {**valid, "answers": {"p000": {**valid["answers"]["p000"],
                                        "probabilities": {"relevant": 1.2, "unrelated": 0,
                                                          "insufficient_evidence": 0}}}},

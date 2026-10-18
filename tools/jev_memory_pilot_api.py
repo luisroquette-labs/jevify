@@ -15,6 +15,14 @@ MODEL = "typesafe/jev-1.14"
 ENDPOINT = "https://openrouter.ai/api/alpha/decisions"
 CHOICES = {"relevant", "unrelated", "insufficient_evidence"}
 MAX_BODY_BYTES = 24 * 1024
+MAX_RESPONSE_BYTES = 1024 * 1024
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Keep the project token on the configured HTTPS endpoint only."""
+
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        return None
 
 
 def committed_excerpt(repo: Path, candidate: dict) -> str | None:
@@ -106,8 +114,12 @@ def call_jev(payload: dict, api_key: str, *, timeout_s: int = 15) -> dict:
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout_s) as response:
-        return json.load(response)
+    opener = urllib.request.build_opener(_NoRedirect())
+    with opener.open(request, timeout=timeout_s) as response:
+        body = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise ValueError("Jev response exceeds 1 MiB")
+        return json.loads(body)
 
 
 def parse_answers(response: dict, pair_map: dict[str, tuple[str, str]]) -> dict[tuple[str, str], dict]:
@@ -119,7 +131,8 @@ def parse_answers(response: dict, pair_map: dict[str, tuple[str, str]]) -> dict[
     cost = usage.get("cost") if isinstance(usage, dict) else None
     model = response.get("model")
     if (not isinstance(raw, dict) or set(raw) != set(pair_map)
-            or not isinstance(model, str) or not model.startswith(MODEL)
+            or not isinstance(model, str)
+            or not (model == MODEL or model.startswith(f"{MODEL}-"))
             or isinstance(cost, bool) or not isinstance(cost, (int, float))
             or not math.isfinite(cost) or cost < 0):
         raise ValueError("incomplete Jev answer or missing actual cost")
@@ -128,7 +141,8 @@ def parse_answers(response: dict, pair_map: dict[str, tuple[str, str]]) -> dict[
         if not isinstance(item, dict) or item.get("type") != "choice":
             raise ValueError("invalid Jev choice answer")
         choice, probabilities = item.get("choice"), item.get("probabilities")
-        if choice not in CHOICES or not isinstance(probabilities, dict) or set(probabilities) != CHOICES:
+        if (not isinstance(choice, str) or choice not in CHOICES
+                or not isinstance(probabilities, dict) or set(probabilities) != CHOICES):
             raise ValueError("invalid Jev choice labels")
         if any(isinstance(value, bool) or not isinstance(value, (int, float))
                or not math.isfinite(value) or not 0 <= value <= 1

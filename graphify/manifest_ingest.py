@@ -16,9 +16,10 @@ path (never the LLM), so a manifest is extracted exactly once.
 from __future__ import annotations
 
 import re
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
+
+from defusedxml import ElementTree as ET
 
 from graphify.ids import make_id
 
@@ -291,7 +292,7 @@ def _parse_gomod(text: str) -> dict | None:
 def _parse_pom(text: str) -> dict | None:
     # Drop the default namespace so findtext/findall don't need the {uri} prefix.
     text = re.sub(r'\sxmlns="[^"]*"', '', text, count=1)
-    root = ET.fromstring(text)
+    root = ET.fromstring(text, forbid_dtd=True)
     aid = root.findtext("artifactId")
     gid = root.findtext("groupId") or root.findtext("parent/groupId")
     version = root.findtext("version") or root.findtext("parent/version")

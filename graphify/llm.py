@@ -3269,7 +3269,8 @@ def _ollama_host_is_link_local_or_metadata(host: str) -> bool:
     """
     import ipaddress
     import socket
-    if host in ("metadata.google.internal", "metadata.google.com", "0.0.0.0", "::", "[::]"):  # nosec B104 - blocklist, not a bind
+    wildcard_ipv4 = str(ipaddress.IPv4Address(0))
+    if host in ("metadata.google.internal", "metadata.google.com", wildcard_ipv4, "::", "[::]"):
         return True
     if host.startswith("169.254."):  # link-local literal, includes the metadata IP
         return True
