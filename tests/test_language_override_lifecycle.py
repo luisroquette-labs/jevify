@@ -2,6 +2,7 @@
 import hashlib
 import json
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -131,8 +132,10 @@ def drive_watch(root, monkeypatch, actions, *, observed_roots=None):
             pass
 
     original_rebuild = watch_mod._rebuild_code
+    original_sleep = time.sleep
 
     def rebuild(path, **kwargs):
+        assert time.sleep is original_sleep
         kwargs["no_cluster"] = True
         return original_rebuild(path, **kwargs)
 
@@ -161,7 +164,7 @@ def drive_watch(root, monkeypatch, actions, *, observed_roots=None):
     monkeypatch.setattr(observers, "Observer", Observer)
     monkeypatch.setattr(polling, "PollingObserver", Observer)
     monkeypatch.setattr(watch_mod, "_rebuild_code", rebuild)
-    monkeypatch.setattr(watch_mod.time, "sleep", pump)
+    monkeypatch.setattr(watch_mod, "_watch_sleep", pump)
     watch_mod.watch(root, debounce=0)
 
 
