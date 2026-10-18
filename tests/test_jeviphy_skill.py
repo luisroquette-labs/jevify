@@ -1,8 +1,9 @@
 """The installed skill entry point must work outside this checkout's cwd."""
 
+import re
+import shutil
 import subprocess
 import sys
-import shutil
 from pathlib import Path
 
 
@@ -25,7 +26,14 @@ def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
 
 def test_portable_skill_code_matches_project_code() -> None:
     root = Path(__file__).resolve().parents[1]
+    script = root / "skills" / "jeviphy" / "scripts" / "run.py"
+    pinned = re.search(r"graphifyy @ git\+https://[^\s\"]+@([0-9a-f]{40})", script.read_text())
+    assert pinned is not None
     for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py"):
-        assert (root / "tools" / name).read_bytes() == (
-            root / "skills" / "jeviphy" / "scripts" / "tools" / name
-        ).read_bytes()
+        source = (root / "tools" / name).read_bytes()
+        assert source == (root / "skills" / "jeviphy" / "scripts" / "tools" / name).read_bytes()
+        committed = subprocess.run(
+            ["git", "show", f"{pinned.group(1)}:tools/{name}"],
+            cwd=root, check=True, capture_output=True,
+        ).stdout
+        assert source == committed

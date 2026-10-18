@@ -22,6 +22,12 @@ Each changed behavior has a focused regression test. No paid API call or real Cl
 - Full repository suite with the `sql` extra: 8,234 passed, 150 skipped after the dependency and XML fixes. The first run without the optional SQL parser had seven dependency-related failures; the same area passed after installing that extra. The sidecar symlink regression was added after this full run; its focused suite passed 88 tests.
 - Ruff on changed Python files, Pyright on the Jeviphy files and manifest parser, Bandit, and five Graphify skill-generation checks passed after their respective fixes. A wider Pyright probe of inherited Graphify modules produced 72 errors from missing optional imports and existing types; those modules are covered by the repository tests, but this review does not claim project-wide type cleanliness.
 - `pip-audit --strict` found no known vulnerabilities after the bounded lockfile upgrade. Bandit passed without findings or stale `nosec` warnings.
+- The portable script installed the reviewed Git commit from `/tmp` with `uv run --no-project` and displayed its CLI. Its two focused tests passed, including source parity with the pinned commit. The eight files in `dist/jeviphy.skill` matched the skill source byte for byte.
+
+## Final code review passes
+
+1. **Source, safety, and regressions:** reread the complete task diff, checked Git and XML boundaries, HTTP behavior, file permissions, duplicated skill code, and the focused regressions. No further correction or substantial improvement was found.
+2. **Portable use and release path:** checked the pinned remote commit, copied-skill test, standalone `uv` installation, package contents, lockfile audit, and CI security gate. No further correction or substantial improvement was found.
 
 ## Release boundary
 
