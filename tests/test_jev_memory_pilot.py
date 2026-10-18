@@ -3,6 +3,7 @@
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import networkx as nx
 import pytest
@@ -75,6 +76,36 @@ def test_candidate_pool_rejects_untracked_source(pilot_repo):
     graph_path.write_text(json.dumps(data))
     with pytest.raises(ValueError, match="not tracked"):
         candidate_pool(graph_path, repo, "same_label")
+
+
+def test_memory_candidate_pool_keeps_question_seven_and_fills_duplicate_slots(
+    pilot_repo, monkeypatch,
+):
+    repo, graph_path, data = pilot_repo
+    data["nodes"] = [
+        {"id": f"q{i}", "label": f"q{i}", "source_file": "a.py", "source_location": "L1"}
+        for i in range(10)
+    ] + [{"id": "memory", "label": "memory", "source_file": "b.py",
+          "source_location": "L1"}]
+    graph_path.write_text(json.dumps(data))
+
+    def score(_graph, terms, *, collect_per_term_seeds):
+        assert not collect_per_term_seeds
+        ids = ["q2", "memory", "q8"] if "summary" in terms else [f"q{i}" for i in range(10)]
+        return SimpleNamespace(ranked=[(10 - index, node_id)
+                                       for index, node_id in enumerate(ids)])
+
+    monkeypatch.setattr("tools.jev_memory_pilot._score_query", score)
+    assert [item["node_id"] for item in candidate_pool(graph_path, repo, "question")] == [
+        f"q{i}" for i in range(10)
+    ]
+    pool = candidate_pool(graph_path, repo, "question", ["summary"])
+    assert [item["node_id"] for item in pool] == [
+        "q0", "q1", "q2", "q3", "q4", "q5", "q6", "memory", "q8", "q7",
+    ]
+    assert [item["baseline_rank"] for item in pool] == list(range(1, 11))
+    with pytest.raises(ValueError, match="up to three"):
+        candidate_pool(graph_path, repo, "question", ["summary"] * 4)
 
 
 def test_load_case_checks_full_graph_not_candidate_pool(tmp_path):
@@ -196,6 +227,7 @@ def test_query_fallback_matches_original_and_does_not_mutate_graph(pilot_repo, t
     assert "secret-canary-do-not-write" not in sidecar.read_text()
     assert question not in sidecar.read_text()
     assert metadata["observation_ids"] == ["o1"]
+    assert metadata["candidate_mode"] == "question"
     with pytest.raises(ValueError, match="stale"):
         read_sidecar(sidecar, graph_path, "0" * 40)
     graph_path.write_bytes(graph_path.read_bytes() + b" ")
@@ -263,6 +295,13 @@ def test_offline_cli_reads_synthetic_decisions(pilot_repo, tmp_path, capsys):
     assert main(["--repo", str(repo), "--graph", str(graph_path), "--corpus", str(corpus),
                  "--case-id", "q1", "--project", "demo", "--decisions", str(decisions)]) == 0
     assert f"Suggested memory link: {second}" in capsys.readouterr().out
+    assert main(["--repo", str(repo), "--graph", str(graph_path), "--corpus", str(corpus),
+                 "--case-id", "q1", "--project", "demo", "--candidate-mode", "memory",
+                 "--decisions", str(decisions)]) == 0
+    sidecar = read_sidecar(graph_path.parent / "jev-memory-decisions.json", graph_path,
+                           subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                                   cwd=repo, text=True).strip())
+    assert sidecar["candidate_mode"] == "memory"
 
 
 def test_dry_run_saves_private_payload_without_network(pilot_repo, tmp_path, monkeypatch):

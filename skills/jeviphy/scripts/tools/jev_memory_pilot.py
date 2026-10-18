@@ -24,13 +24,29 @@ def _head(repo: Path) -> str:
     ).strip()
 
 
-def candidate_pool(graph_path: Path, repo: Path, question: str) -> list[dict]:
+def candidate_pool(
+    graph_path: Path, repo: Path, question: str,
+    memory_summaries: list[str] | None = None,
+) -> list[dict]:
     """Return up to ten Graphify-ranked nodes from a graph pinned to repo HEAD."""
     graph = _read_graph(str(graph_path))
     if graph.graph.get("_built_at_commit") != _head(repo):
         raise ValueError("graph commit differs from source HEAD; rebuild the graph")
-    ranked = _score_query(graph, _query_terms(question), collect_per_term_seeds=False).ranked[:10]
-    sources = sorted({source for _, nid in ranked
+    ranked = [nid for _, nid in _score_query(
+        graph, _query_terms(question), collect_per_term_seeds=False,
+    ).ranked[:10]]
+    if memory_summaries:
+        if (len(memory_summaries) > 3
+                or any(not isinstance(summary, str) or not summary.strip()
+                       for summary in memory_summaries)):
+            raise ValueError("expected up to three nonempty memory summaries")
+        memory_ranked = [nid for _, nid in _score_query(
+            graph, _query_terms(" ".join(summary[:300] for summary in memory_summaries)),
+            collect_per_term_seeds=False,
+        ).ranked[:3]]
+        # Keep the question's first seven candidates; fill duplicate slots from its remainder.
+        ranked = list(dict.fromkeys(ranked[:7] + memory_ranked + ranked[7:]))[:10]
+    sources = sorted({source for nid in ranked
                       if isinstance(source := graph.nodes[nid].get("source_file"), str)
                       and source})
     for source in sources:
@@ -52,7 +68,7 @@ def candidate_pool(graph_path: Path, repo: Path, question: str) -> list[dict]:
             "source_location": graph.nodes[nid].get("source_location", ""),
             "baseline_rank": rank,
         }
-        for rank, (_, nid) in enumerate(ranked, 1)
+        for rank, nid in enumerate(ranked, 1)
     ]
 
 
@@ -241,7 +257,7 @@ def save_private_payload(repo: Path, case_id: str, payload: dict) -> Path:
 def query_with_decisions(
     graph_path: Path, repo: Path, case: dict, candidates: list[dict],
     answers: dict[tuple[str, str], dict], *, eligible_node_ids: set[str], threshold: float,
-    model_id: str | None = None,
+    model_id: str | None = None, candidate_mode: str = "question",
 ) -> str:
     """Call the original Graphify query, with seeds only when its top three change."""
     observations = case["observations"]
@@ -280,6 +296,7 @@ def query_with_decisions(
         "model": model_id if valid else None,
         "query_id": case["id"],
         "query_sha256": hashlib.sha256(case["question"].encode()).hexdigest(),
+        "candidate_mode": candidate_mode,
         "candidate_ids": [item["node_id"] for item in candidates],
         "selected_nodes": selected,
         "observation_ids": [item["id"] for item in observations],
@@ -414,6 +431,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--corpus", type=Path, required=True)
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--project", required=True)
+    parser.add_argument("--candidate-mode", choices=("question", "memory"),
+                        default="question", help="Experimental 7+3 memory candidate pool")
     parser.add_argument("--threshold", type=float, default=0.8)
     parser.add_argument("--decisions", type=Path, help="Local offline decision JSON")
     parser.add_argument("--dry-run", action="store_true", help="Save exact Jev payload privately")
@@ -430,7 +449,11 @@ def main(argv: list[str] | None = None) -> int:
         validate_private_corpus(args.corpus)
     graph = _read_graph(str(args.graph))
     case = load_case(args.corpus, args.case_id, set(graph.nodes), args.project)
-    candidates = candidate_pool(args.graph, args.repo, case["question"])
+    candidates = candidate_pool(
+        args.graph, args.repo, case["question"],
+        [item["summary"] for item in case["observations"]]
+        if args.candidate_mode == "memory" else None,
+    )
     answers = load_decisions(args.decisions) if args.decisions else {}
     eligible_node_ids = {item["node_id"] for item in candidates if item["source_file"]}
     model_id = None
@@ -465,7 +488,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Jev actual cost: USD {cost:.8f}", file=sys.stderr)
     print(query_with_decisions(args.graph, args.repo, case, candidates, answers,
                                eligible_node_ids=eligible_node_ids,
-                               threshold=args.threshold, model_id=model_id), end="")
+                               threshold=args.threshold, model_id=model_id,
+                               candidate_mode=args.candidate_mode), end="")
     return 0
 
 
