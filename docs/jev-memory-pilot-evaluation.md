@@ -6,7 +6,7 @@ The offline harness is implemented. Synthetic tests prove bounded candidate sele
 
 No real claude-mem record or private source excerpt has been sent to Jev. No paid request has run. The real paired result and the upstream contribution decision remain pending the data and cost review described below.
 
-One evaluation checkout was pinned to its source commit and rebuilt as a private AST-only graph after its existing graph exposed an untracked generated asset. Three sanitized observation summaries and three draft cases now live outside Git; exact local payload previews contain 16, 8, and 5 pairs. The draft labels and outbound excerpts still require human review. No real cohort is frozen, so there is no measured gain.
+One private evaluation checkout is pinned to its source commit and has an AST-only graph. A private review file now has 30 draft questions: the original three cases plus 27 additional questions from the same project's memory index. The new observations use titles only; all 30 questions, summary text, candidate lists, and gold labels require human review. The original three exact local payload previews contain 16, 8, and 5 pairs. No real cohort is frozen, no paid request has run, and there is no measured gain.
 
 ## Frozen labeling rule for the real cohort
 
