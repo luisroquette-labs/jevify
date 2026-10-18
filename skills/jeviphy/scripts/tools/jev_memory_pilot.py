@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from graphify.serve import _query_terms, _read_graph, _score_query
 
@@ -24,9 +24,19 @@ def _head(repo: Path) -> str:
     ).strip()
 
 
+def _valid_source_paths(paths: object) -> bool:
+    return (isinstance(paths, list) and len(paths) <= 30
+            and all(isinstance(path, str) and path and "\\" not in path
+                    and not PurePosixPath(path).is_absolute()
+                    and ".." not in PurePosixPath(path).parts
+                    and PurePosixPath(path).as_posix() == path
+                    and path != "." for path in paths))
+
+
 def candidate_pool(
     graph_path: Path, repo: Path, question: str,
     memory_summaries: list[str] | None = None,
+    *, source_paths: list[str] | None = None,
 ) -> list[dict]:
     """Return up to ten Graphify-ranked nodes from a graph pinned to repo HEAD."""
     graph = _read_graph(str(graph_path))
@@ -35,6 +45,8 @@ def candidate_pool(
     ranked = [nid for _, nid in _score_query(
         graph, _query_terms(question), collect_per_term_seeds=False,
     ).ranked[:10]]
+    if source_paths is not None and not _valid_source_paths(source_paths):
+        raise ValueError("expected up to 30 repo-relative source paths")
     if memory_summaries:
         if (len(memory_summaries) > 3
                 or any(not isinstance(summary, str) or not summary.strip()
@@ -43,9 +55,17 @@ def candidate_pool(
         memory_ranked = [nid for _, nid in _score_query(
             graph, _query_terms(" ".join(summary[:300] for summary in memory_summaries)),
             collect_per_term_seeds=False,
-        ).ranked[:3]]
-        # Keep the question's first seven candidates; fill duplicate slots from its remainder.
-        ranked = list(dict.fromkeys(ranked[:7] + memory_ranked + ranked[7:]))[:10]
+        ).ranked]
+        cited_files = set(source_paths or ())
+        source_ranked = ([nid for nid in memory_ranked
+                          if graph.nodes[nid].get("source_file") in cited_files]
+                         if source_paths else [])
+        # Preserve question rank; provenance can fill two slots when it has scored nodes.
+        keep = 8 if source_ranked else 7
+        ranked = list(dict.fromkeys(
+            ranked[:keep] + (source_ranked if source_ranked else memory_ranked[:3])
+            + ranked[keep:],
+        ))[:10]
     sources = sorted({source for nid in ranked
                       if isinstance(source := graph.nodes[nid].get("source_file"), str)
                       and source})
@@ -113,6 +133,9 @@ def load_case(path: Path, case_id: str, graph_node_ids: set[str], project: str) 
            or not all(isinstance(item[field], str) and item[field] for field in required)
            for item in resolved):
         raise ValueError("observation project or fields are invalid")
+    if any("source_paths" in item and not _valid_source_paths(item["source_paths"])
+           for item in resolved):
+        raise ValueError("observation source paths are invalid")
     if not isinstance(pairs, list) or any(
         not isinstance(pair, list) or len(pair) != 2
         or pair[0] not in gold or pair[1] not in selected for pair in pairs
@@ -432,7 +455,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--project", required=True)
     parser.add_argument("--candidate-mode", choices=("question", "memory"),
-                        default="question", help="Experimental 7+3 memory candidate pool")
+                        default="question", help="Experimental memory candidate pool")
     parser.add_argument("--threshold", type=float, default=0.8)
     parser.add_argument("--decisions", type=Path, help="Local offline decision JSON")
     parser.add_argument("--dry-run", action="store_true", help="Save exact Jev payload privately")
@@ -453,6 +476,9 @@ def main(argv: list[str] | None = None) -> int:
         args.graph, args.repo, case["question"],
         [item["summary"] for item in case["observations"]]
         if args.candidate_mode == "memory" else None,
+        source_paths=list(dict.fromkeys(
+            path for item in case["observations"] for path in item.get("source_paths", [])
+        )) if args.candidate_mode == "memory" else None,
     )
     answers = load_decisions(args.decisions) if args.decisions else {}
     eligible_node_ids = {item["node_id"] for item in candidates if item["source_file"]}
