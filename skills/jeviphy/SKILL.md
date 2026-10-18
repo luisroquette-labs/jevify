@@ -19,10 +19,10 @@ Use Graphify's existing graph and query engine. Treat memory links as suggestion
      --corpus /private/path/corpus.json --case-id q001 --project project-name
    ```
 
-4. For an offline relevance experiment, add `--decisions /private/path/decisions.json`. For a local request preview, add `--dry-run`. Review its private payload before any external transmission.
+4. For an offline relevance experiment, add `--decisions /private/path/decisions.json`. To test the bounded memory-aware candidate pool, add `--candidate-mode memory`: it retains the question's first seven nodes, adds up to three from the selected memory summaries, and fills duplicate slots from the question ranking. The default `question` mode remains the comparison arm. For a local request preview, add `--dry-run`. Review its private payload before any external transmission.
 5. Run `--live --approved-paid-use --max-requests 1` only after the user explicitly approves this paid API call and the exact class of code/memory content to send. Supply a project-scoped `JEV_MEMORY_PILOT_API_KEY` manually. Never auto-use a personal token or retry an uncertain call.
 
-The runner caps work at ten nodes, three observations, thirty decisions, and a 24 KiB request. Missing or malformed decisions fall back to the unseeded Graphify query. Query runs write `graphify-out/jev-memory-decisions.json`; dry runs save a private payload outside Git. Neither mode alters the structural graph.
+The runner caps work at ten nodes, three observations, thirty decisions, and a 24 KiB request. Missing or malformed decisions fall back to the unseeded Graphify query, including in memory candidate mode. Query runs write `graphify-out/jev-memory-decisions.json`; dry runs save a private payload outside Git. Neither mode alters the structural graph.
 
 ## Evaluate
 

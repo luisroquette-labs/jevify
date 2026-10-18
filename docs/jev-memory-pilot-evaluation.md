@@ -16,6 +16,12 @@ Of 30 questions, 26 had at least one memory-cited implementation file represente
 
 This shows a practical ceiling for reranking the current ten candidates: many source-linked cases offer Jev no node from the memory's cited implementation files to promote. The next technical experiment should improve or broaden candidate retrieval, then repeat the audit and a separately labeled paired evaluation. The private questions, memory records, file paths, and per-case results remain outside Git.
 
+## Bounded two-query candidate experiment
+
+An optional `--candidate-mode memory` now takes the first seven candidates from the question-only Graphify ranking and up to three from a separate search over the selected memory summaries. It deduplicates the union and fills spare slots from the question ranking. The default `question` mode and the unseeded answer fallback are unchanged. No Jev request is needed to compare candidate pools.
+
+On the exploratory 30-question cohort, exact memory-cited source-file overlap in the top ten rose from 6/26 to 10/26 without losing a previous file hit. This variant was chosen after inspecting those cases, so they cannot validate it independently. A second cohort was selected from all previously unused memories with an implementation file represented in the pinned graph and frozen before running the variant. It contains 19 memories predating the graph commit and one later memory used as a stale-code control. On the 19 primary cases, overlap moved from 7/19 to 8/19, again without losing a previous hit; neither arm hit the stale control. This selected cohort is not random or independently labeled. The result is a modest source-path proxy, not proof of better answers or a Jev gain. The private case details and results remain outside Git.
+
 ## Frozen labeling rule for the real cohort
 
 1. Select one repository with a graph pinned to its source commit. Select observations through the supported memory gateway, review each summary for sensitive content, and keep all records and labels under a mode-0700 directory outside Git worktrees.
