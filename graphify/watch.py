@@ -2716,6 +2716,8 @@ def _batch_triggers_rebuild(batch: list[Path]) -> bool:
 
 
 _READ_ONLY_EVENT_TYPES = frozenset({"opened", "closed_no_write"})
+# Tests drive this loop without replacing time.sleep for the whole process.
+_watch_sleep = time.sleep
 
 
 def _is_read_only_event(event) -> bool:
@@ -2832,7 +2834,7 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
 
     try:
         while True:
-            time.sleep(0.5)
+            _watch_sleep(0.5)
             if pending and (time.monotonic() - last_trigger) >= debounce:
                 pending = False
                 batch = list(changed)
