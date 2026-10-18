@@ -18,6 +18,13 @@ graphify-out/
 .graphify_python
 .claude/
 skills/
+# Commit this project's portable Claude Code and Codex skill only.
+!skills/
+skills/*
+!skills/jeviphy/
+!skills/jeviphy/**
+skills/jeviphy/**/__pycache__/
+skills/jeviphy/**/*.pyc
 # The packaged skill bundles under graphify/skills/ are generated, committed
 # artifacts (rendered by tools/skillgen). Keep them tracked even though the
 # broad skills/ rule above ignores install-target skill dirs elsewhere.
