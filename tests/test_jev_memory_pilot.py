@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -137,6 +138,88 @@ def test_source_backed_memory_candidates_keep_question_eight(pilot_repo, monkeyp
     for path in ("../b.py", "/b.py", "b\\.py", "", 42):
         with pytest.raises(ValueError, match="source paths"):
             candidate_pool(graph_path, repo, "question", ["summary"], source_paths=[path])
+
+
+def test_fast_source_scores_only_cited_nodes_once_and_falls_back(pilot_repo, monkeypatch):
+    repo, graph_path, data = pilot_repo
+    data["nodes"] = [
+        {"id": f"q{i}", "label": f"q{i}", "source_file": "a.py", "source_location": "L1"}
+        for i in range(10)
+    ] + [
+        {"id": f"source{i}", "label": f"source{i}", "source_file": "b.py",
+         "source_location": "L1"} for i in range(2)
+    ]
+    graph_path.write_text(json.dumps(data))
+    seen = []
+
+    def score(graph, _terms, *, collect_per_term_seeds):
+        assert not collect_per_term_seeds
+        seen.append((set(graph.nodes), set(graph.graph)))
+        return SimpleNamespace(ranked=[(2 - i, nid) for i, nid in enumerate(graph.nodes)])
+
+    monkeypatch.setattr("tools.jev_memory_pilot._score_query", score)
+    rows = candidate_pool(graph_path, repo, "question", ["summary"],
+                          source_paths=["b.py"], fast_source=True)
+    assert {row["node_id"] for row in rows} == {"source0", "source1"}
+    assert len(seen) == 1 and seen[0] == ({"source0", "source1"}, set())
+
+    seen.clear()
+    fallback = candidate_pool(graph_path, repo, "question", ["summary"],
+                              source_paths=["missing.py"], fast_source=True)
+    assert fallback == []
+    assert seen == []
+
+    (repo / "b.py").write_text("def edited(): pass\n")
+    with pytest.raises(ValueError, match="uncommitted edits"):
+        candidate_pool(graph_path, repo, "question", ["summary"],
+                       source_paths=["b.py"], fast_source=True)
+
+
+def test_fast_source_uses_seeded_graphify_and_invalid_decisions_fall_back(pilot_repo):
+    repo, graph_path, _ = pilot_repo
+    candidates = candidate_pool(graph_path, repo, "same_label", ["same_label"],
+                                source_paths=["b.py"], fast_source=True)
+    case = {"id": "q1", "question": "same_label", "observations": []}
+    output = query_with_decisions(
+        graph_path, repo, case, candidates, {}, eligible_node_ids=set(),
+        threshold=.8, candidate_mode="fast-source",
+    )
+    assert "Start (given):" in output
+    expected_seeded = subprocess.check_output(
+        [sys.executable, "-m", "graphify", "query", "same_label", "--graph", str(graph_path),
+         "--seed", candidates[0]["node_id"]], text=True,
+    )
+    assert output == expected_seeded
+    sidecar = read_sidecar(graph_path.parent / "jev-memory-decisions.json", graph_path,
+                           subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                                   cwd=repo, text=True).strip())
+    assert sidecar["selected_nodes"] == [candidates[0]["node_id"]]
+
+    invalid = query_with_decisions(
+        graph_path, repo, case, candidates,
+        {(candidates[0]["node_id"], "missing"): {"choice": "relevant", "probability": 1}},
+        eligible_node_ids=set(), threshold=.8, candidate_mode="fast-source",
+    )
+    assert "Start (given):" not in invalid
+
+    attempted = query_with_decisions(
+        graph_path, repo, case, candidates, {}, eligible_node_ids=set(),
+        threshold=.8, candidate_mode="fast-source", allow_source_seeds=False,
+    )
+    assert "Start (given):" not in attempted
+
+    empty = candidate_pool(graph_path, repo, "same_label", ["summary"],
+                           source_paths=[], fast_source=True)
+    assert empty == []
+    fallback = query_with_decisions(
+        graph_path, repo, case, empty, {}, eligible_node_ids=set(),
+        threshold=.8, candidate_mode="fast-source",
+    )
+    expected_unseeded = subprocess.check_output(
+        [sys.executable, "-m", "graphify", "query", "same_label", "--graph", str(graph_path)],
+        text=True,
+    )
+    assert fallback == expected_unseeded
 
 
 def test_load_case_checks_full_graph_not_candidate_pool(tmp_path):

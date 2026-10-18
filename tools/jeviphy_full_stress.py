@@ -1,0 +1,159 @@
+"""Paired offline answer and retrieval stress test on a private frozen cohort."""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import hashlib
+import io
+import json
+import os
+import statistics
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from graphify.serve import _read_graph
+from tools.jev_memory_pilot import candidate_pool, query_with_decisions
+from tools.jeviphy_stress import percentile
+
+
+def answer_hits(output: str, gold: list[str], graph) -> int:
+    return sum(
+        f'NODE {graph.nodes[nid].get("label", nid)} '
+        f'[src={graph.nodes[nid].get("source_file", "")} ' in output
+        for nid in gold
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--graph", type=Path, required=True)
+    parser.add_argument("--repo", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--passes", type=int, default=3)
+    args = parser.parse_args()
+    if args.passes < 3:
+        parser.error("at least three passes are required")
+    if args.output.exists() or args.output.parent.stat().st_mode & 0o077:
+        parser.error("output must not exist and its directory must be private")
+    if args.manifest.stat().st_mode & 0o077:
+        parser.error("input manifest must be mode 0600")
+    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    cases = manifest["cases"]
+    if len(cases) != 30 or len({case["id"] for case in cases}) != 30:
+        parser.error("expected 30 distinct frozen cases")
+    graph_hash = hashlib.sha256(args.graph.read_bytes()).hexdigest()
+    source_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=args.repo, text=True,
+    ).strip()
+    if graph_hash != manifest["graph_sha256"] or source_commit != manifest["source_commit"]:
+        parser.error("graph or source checkout differs from frozen manifest")
+    if subprocess.check_output(["git", "status", "--porcelain"], cwd=args.repo):
+        parser.error("source checkout has uncommitted changes")
+    graph = _read_graph(str(args.graph))
+    if any(nid not in graph for case in cases for nid in case["gold_node_ids"]):
+        parser.error("gold label is absent from the pinned graph")
+
+    semantic = []
+    for case in cases:
+        gold = set(case["gold_node_ids"])
+        baseline = candidate_pool(args.graph, args.repo, case["question"], graph=graph)
+        assisted = candidate_pool(
+            args.graph, args.repo, case["question"], [case["summary"]],
+            source_paths=case["source_paths"], fast_source=True, graph=graph,
+        )
+        semantic.append({
+            "id": case["id"], "source_backed": case["source_backed"],
+            "gold_ids": case["gold_node_ids"],
+            "baseline_ids": [item["node_id"] for item in baseline],
+            "jeviphy_ids": [item["node_id"] for item in assisted],
+            "baseline_hits": len(gold & {item["node_id"] for item in baseline[:5]}),
+            "jeviphy_hits": len(gold & {item["node_id"] for item in assisted[:5]}),
+            "source_scoped": bool(assisted and assisted[0].get("source_scoped")),
+        })
+
+    def run(case: dict, assisted: bool) -> tuple[float, str]:
+        start = time.perf_counter_ns()
+        if assisted:
+            loaded = _read_graph(str(args.graph))
+            candidates = candidate_pool(
+                args.graph, args.repo, case["question"], [case["summary"]],
+                source_paths=case["source_paths"], fast_source=True, graph=loaded,
+            )
+            with contextlib.redirect_stderr(io.StringIO()):
+                output = query_with_decisions(
+                    args.graph, args.repo,
+                    {"id": case["id"], "question": case["question"], "observations": []},
+                    candidates, {}, eligible_node_ids=set(), threshold=.8,
+                    candidate_mode="fast-source", graph=loaded,
+                )
+        else:
+            output = subprocess.run(
+                [sys.executable, "-m", "graphify", "query", case["question"],
+                 "--graph", str(args.graph)],
+                env={**os.environ, "GRAPHIFY_QUERY_LOG_DISABLE": "1"},
+                capture_output=True, text=True, check=True,
+            ).stdout
+        return (time.perf_counter_ns() - start) / 1_000_000, output
+
+    run(cases[0], False)
+    run(cases[0], True)
+    rows = []
+    first_answers = []
+    for repeat in range(args.passes):
+        for index, case in enumerate(cases):
+            order = (False, True) if (repeat + index) % 2 == 0 else (True, False)
+            outputs = {arm: run(case, arm) for arm in order}
+            baseline_ms, baseline_text = outputs[False]
+            jeviphy_ms, jeviphy_text = outputs[True]
+            rows.append({
+                "id": case["id"], "pass": repeat + 1,
+                "source_backed": case["source_backed"],
+                "baseline_ms": baseline_ms, "jeviphy_ms": jeviphy_ms,
+                "baseline_answer_hits": answer_hits(baseline_text, case["gold_node_ids"], graph),
+                "jeviphy_answer_hits": answer_hits(jeviphy_text, case["gold_node_ids"], graph),
+                "same_answer": baseline_text == jeviphy_text,
+            })
+            if repeat == 0:
+                first_answers.append({
+                    "id": case["id"], "baseline": baseline_text, "jeviphy": jeviphy_text,
+                })
+        print(f"pass {repeat + 1}/{args.passes} complete", flush=True)
+
+    baseline_ms = [row["baseline_ms"] for row in rows]
+    jeviphy_ms = [row["jeviphy_ms"] for row in rows]
+    summary = {
+        "cases": len(cases), "paired_runs": len(rows),
+        "source_backed_cases": sum(case["source_backed"] for case in cases),
+        "baseline_precision_at_5": sum(row["baseline_hits"] for row in semantic) / (5 * len(cases)),
+        "jeviphy_precision_at_5": sum(row["jeviphy_hits"] for row in semantic) / (5 * len(cases)),
+        "source_baseline_hits": sum(row["baseline_hits"] for row in semantic if row["source_backed"]),
+        "source_jeviphy_hits": sum(row["jeviphy_hits"] for row in semantic if row["source_backed"]),
+        "source_gains": sum(row["jeviphy_hits"] > row["baseline_hits"] for row in semantic if row["source_backed"]),
+        "source_losses": sum(row["jeviphy_hits"] < row["baseline_hits"] for row in semantic if row["source_backed"]),
+        "source_scoped_count": sum(row["source_scoped"] for row in semantic if row["source_backed"]),
+        "first_pass_baseline_answer_hits": sum(row["baseline_answer_hits"] for row in rows[:30]),
+        "first_pass_jeviphy_answer_hits": sum(row["jeviphy_answer_hits"] for row in rows[:30]),
+        "baseline_p50_ms": round(statistics.median(baseline_ms), 2),
+        "jeviphy_p50_ms": round(statistics.median(jeviphy_ms), 2),
+        "baseline_p95_ms": round(percentile(baseline_ms, .95), 2),
+        "jeviphy_p95_ms": round(percentile(jeviphy_ms, .95), 2),
+        "jeviphy_faster_pairs": sum(a < b for a, b in zip(jeviphy_ms, baseline_ms)),
+    }
+    report = {
+        "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(),
+        "graph_sha256": graph_hash, "source_commit": source_commit,
+        "summary": summary, "semantic": semantic, "rows": rows,
+        "first_pass_answers": first_answers,
+    }
+    fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        json.dump(report, stream)
+    print(json.dumps(summary, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

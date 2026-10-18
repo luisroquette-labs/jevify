@@ -59,6 +59,7 @@ def main() -> None:
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--passes", type=int, default=3)
+    parser.add_argument("--assisted-mode", choices=("memory", "fast-source"), default="memory")
     args = parser.parse_args()
     if args.passes < 3:
         parser.error("at least three passes are required")
@@ -85,6 +86,7 @@ def main() -> None:
             args.graph, args.repo, case["question"],
             [case["summary"]] if assisted else None,
             source_paths=case["source_paths"] if assisted else None,
+            fast_source=assisted and args.assisted_mode == "fast-source",
         )
         return (time.perf_counter_ns() - start) / 1_000_000, pool
 
@@ -118,6 +120,7 @@ def main() -> None:
             })
         print(f"pass {pass_number + 1}/{args.passes} complete", flush=True)
     report = {
+        "assisted_mode": args.assisted_mode,
         "graph_sha256": graph_hash,
         "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(),
         "source_commit": source_commit,

@@ -6,9 +6,18 @@ import subprocess
 import sys
 from types import SimpleNamespace
 
+import networkx as nx
 import pytest
 
+from tools.jeviphy_full_stress import answer_hits
 from tools.jeviphy_stress import main, peak_rss_bytes, percentile, summarize
+
+
+def test_answer_hits_requires_label_and_exact_source():
+    graph = nx.Graph()
+    graph.add_node("n", label="render()", source_file="src/right.ts")
+    assert answer_hits("NODE render() [src=src/wrong.ts loc=L1]", ["n"], graph) == 0
+    assert answer_hits("NODE render() [src=src/right.ts loc=L1]", ["n"], graph) == 1
 
 
 def test_peak_rss_normalizes_linux_kib_and_macos_bytes(monkeypatch):
