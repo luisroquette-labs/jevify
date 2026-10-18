@@ -1,3 +1,7 @@
+# Jeviphy
+
+This fork is the home of [Jeviphy for Claude Code and Codex](skills/jeviphy/SKILL.md): an offline-first Graphify and Claude Mem skill with optional Jev relevance decisions. The [upstream pilot PR](https://github.com/Graphify-Labs/graphify/pull/4530) remains a separate technical feasibility proposal; no Jev quality gain is claimed.
+
 <p align="center">
   <a href="https://graphify.com"><img src="https://raw.githubusercontent.com/Graphify-Labs/graphify/v8/docs/graphify-logo.png" width="360" height="189" alt="Graphify"/></a>
 </p>
