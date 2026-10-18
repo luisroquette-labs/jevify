@@ -573,7 +573,7 @@ def to_cypher(G: nx.Graph, output_path: str) -> None:
             f"MATCH (a {{id: '{u_esc}'}}), (b {{id: '{v_esc}'}}) "
             f"MERGE (a)-[:{rel} {{confidence: '{conf}'}}]->(b);"
         )
-    with open(output_path, "w", encoding="utf-8") as f:  # nosec
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
 
@@ -617,7 +617,7 @@ def _cap_filename(s: str, limit: int = 200) -> str:
     b = s.encode("utf-8")
     if len(b) <= limit:
         return s
-    digest = hashlib.sha1(s.encode("utf-8")).hexdigest()[:8]  # nosec - not security
+    digest = hashlib.sha1(s.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
     keep = limit - 9  # "_" + 8 hex chars
     truncated = b[:keep].decode("utf-8", "ignore")  # "ignore" drops a split trailing char
     return f"{truncated}_{digest}"

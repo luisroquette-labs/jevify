@@ -7,13 +7,14 @@ import hashlib
 import json
 import math
 import os
+import stat
 import statistics
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from graphify.paths import write_json_atomic
 from graphify.serve import _query_terms, _read_graph, _score_query
 
 
@@ -177,6 +178,38 @@ def load_decisions(path: Path) -> dict[tuple[str, str], dict]:
     return answers
 
 
+def validate_private_corpus(path: Path) -> None:
+    """Require a private corpus outside Git before any paid request."""
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("live corpus must be a regular private file")
+    if stat.S_IMODE(path.stat().st_mode) != 0o600:
+        raise ValueError("live corpus file must have mode 0600")
+    if stat.S_IMODE(path.parent.stat().st_mode) != 0o700:
+        raise ValueError("live corpus directory must have mode 0700")
+    inside_git = subprocess.run(
+        ["git", "-C", str(path.parent), "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True,
+    )
+    if inside_git.returncode == 0:
+        raise ValueError("live corpus must be outside all Git worktrees")
+
+
+def write_private_sidecar(path: Path, data: dict) -> None:
+    """Replace metadata atomically without ever making observation IDs world-readable."""
+    target = path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".jev-memory-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, target)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 def save_private_payload(repo: Path, case_id: str, payload: dict) -> Path:
     """Store exact dry-run bytes outside all Git worktrees with private modes."""
     from tools.jev_memory_pilot_api import serialize_request
@@ -184,6 +217,11 @@ def save_private_payload(repo: Path, case_id: str, payload: dict) -> Path:
     repo_hash = hashlib.sha256(str(repo.resolve()).encode()).hexdigest()[:12]
     private_dir = Path.home() / ".local" / "share" / "jev-memory-pilot" / repo_hash
     private_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if subprocess.run(
+        ["git", "-C", str(private_dir), "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True,
+    ).returncode == 0:
+        raise ValueError("dry-run payload directory must be outside all Git worktrees")
     private_dir.chmod(0o700)
     body = serialize_request(payload)
     name = hashlib.sha256(case_id.encode()).hexdigest()[:12]
@@ -253,7 +291,7 @@ def query_with_decisions(
         "redaction_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    write_json_atomic(graph_path.parent / "jev-memory-decisions.json", metadata, indent=2)
+    write_private_sidecar(graph_path.parent / "jev-memory-decisions.json", metadata)
     return answer_text
 
 
@@ -291,6 +329,10 @@ def evaluate(cases: list[dict], baseline: dict[str, dict], assisted: dict[str, d
         case_id = case["id"]
         first, second = baseline[case_id], assisted[case_id]
         pool = first["candidate_node_ids"]
+        if (not isinstance(pool, list) or len(pool) > 10
+                or any(not isinstance(node_id, str) or not node_id for node_id in pool)
+                or len(set(pool)) != len(pool)):
+            raise ValueError("invalid candidate pool")
         if pool != second["candidate_node_ids"]:
             raise ValueError("candidate pool differs between arms")
         for arm in (first, second):
@@ -324,14 +366,23 @@ def evaluate(cases: list[dict], baseline: dict[str, dict], assisted: dict[str, d
             assisted_recalls.append(assisted_r)
         paired[case_id] = {
             "precision_at_5_delta": assisted_p - base_p,
-            "recall_at_5_delta": assisted_r - base_r if base_r is not None else None,
+            "recall_at_5_delta": (
+                assisted_r - base_r
+                if assisted_r is not None and base_r is not None else None
+            ),
         }
         base_latencies.append(float(first["latency_ms"]))
         assisted_latencies.append(float(second["latency_ms"]))
         request_count += second["request_count"]
         actual_cost += second["usage_cost"]
         gold_pairs = {tuple(pair) for pair in case["relevant_pairs"]}
+        seen_suggestions = set()
         for pair in second.get("suggestions", []):
+            if (not isinstance(pair, (list, tuple)) or len(pair) != 2
+                    or not all(isinstance(value, str) and value for value in pair)
+                    or pair[0] not in pool or tuple(pair) in seen_suggestions):
+                raise ValueError("invalid or duplicate suggestion")
+            seen_suggestions.add(tuple(pair))
             total_suggestions += 1
             if tuple(pair) not in gold_pairs:
                 unsupported += 1
@@ -375,6 +426,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--live cannot be combined with --decisions or --dry-run")
     if args.print_synthetic_payload and not args.dry_run:
         parser.error("--print-synthetic-payload requires --dry-run")
+    if args.live:
+        validate_private_corpus(args.corpus)
     graph = _read_graph(str(args.graph))
     case = load_case(args.corpus, args.case_id, set(graph.nodes), args.project)
     candidates = candidate_pool(args.graph, args.repo, case["question"])

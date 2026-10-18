@@ -16,6 +16,7 @@ from tools.jev_memory_pilot import (
     main,
     query_with_decisions,
     read_sidecar,
+    write_private_sidecar,
 )
 
 
@@ -188,6 +189,7 @@ def test_query_fallback_matches_original_and_does_not_mutate_graph(pilot_repo, t
     assert hashlib.sha256(learning.read_bytes()).hexdigest() == learning_before
     assert not log_path.exists()
     sidecar = graph_path.parent / "jev-memory-decisions.json"
+    assert sidecar.stat().st_mode & 0o777 == 0o600
     metadata = read_sidecar(sidecar, graph_path, subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=repo, text=True,
     ).strip())
@@ -199,6 +201,17 @@ def test_query_fallback_matches_original_and_does_not_mutate_graph(pilot_repo, t
     graph_path.write_bytes(graph_path.read_bytes() + b" ")
     with pytest.raises(ValueError, match="stale"):
         read_sidecar(sidecar, graph_path, metadata["head"])
+
+
+def test_sidecar_replaces_symlink_without_overwriting_its_target(tmp_path):
+    sentinel = tmp_path / "sentinel.json"
+    sentinel.write_text("keep")
+    sidecar = tmp_path / "jev-memory-decisions.json"
+    sidecar.symlink_to(sentinel)
+    write_private_sidecar(sidecar, {"schema_version": 1})
+    assert sentinel.read_text() == "keep"
+    assert not sidecar.is_symlink()
+    assert sidecar.stat().st_mode & 0o777 == 0o600
 
 
 def test_query_uses_seeds_only_after_top_three_change(pilot_repo, monkeypatch):
@@ -252,11 +265,13 @@ def test_offline_cli_reads_synthetic_decisions(pilot_repo, tmp_path, capsys):
     assert f"Suggested memory link: {second}" in capsys.readouterr().out
 
 
-def test_dry_run_saves_private_payload_without_network(pilot_repo, tmp_path):
+def test_dry_run_saves_private_payload_without_network(pilot_repo, tmp_path, monkeypatch):
     from unittest.mock import patch
 
     repo, graph_path, _ = pilot_repo
-    home = Path.home()
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
     corpus = tmp_path / "private-corpus.json"
     corpus.write_text(json.dumps({
         "observations": [{"id": "o1", "project": "demo", "date": "2026-10-17",
@@ -277,6 +292,21 @@ def test_dry_run_saves_private_payload_without_network(pilot_repo, tmp_path):
     assert len(json.loads(payload_file.read_text())["questions"]) == 2
 
 
+def test_dry_run_rejects_storage_inside_git_worktree(pilot_repo, tmp_path, monkeypatch):
+    from tools.jev_memory_pilot import save_private_payload
+
+    repo, _, _ = pilot_repo
+    home = tmp_path / "home"
+    storage = home / ".local" / "share"
+    storage.mkdir(parents=True)
+    destination = repo / "private"
+    destination.mkdir()
+    (storage / "jev-memory-pilot").symlink_to(destination, target_is_directory=True)
+    monkeypatch.setattr(Path, "home", lambda: home)
+    with pytest.raises(ValueError, match="outside all Git worktrees"):
+        save_private_payload(repo, "q1", {"model": "synthetic"})
+
+
 def test_explicit_live_mode_calls_mock_once(pilot_repo, tmp_path, monkeypatch, capsys):
     from unittest.mock import patch
 
@@ -288,6 +318,8 @@ def test_explicit_live_mode_calls_mock_once(pilot_repo, tmp_path, monkeypatch, c
         "cases": [{"id": "q1", "question": "same_label",
                    "relevant_node_ids": [], "relevant_pairs": [], "observation_ids": ["o1"]}],
     }))
+    tmp_path.chmod(0o700)
+    corpus.chmod(0o600)
     monkeypatch.setenv("JEV_MEMORY_PILOT_API_KEY", "test-key")
     response = {"model": "typesafe/jev-1.14-20261001", "usage": {"cost": 0.0001},
                 "answers": {key: {"type": "choice", "choice": "unrelated",
@@ -300,6 +332,40 @@ def test_explicit_live_mode_calls_mock_once(pilot_repo, tmp_path, monkeypatch, c
                      "--live", "--approved-paid-use", "--max-requests", "1"]) == 0
     post.assert_called_once()
     assert "Jev actual cost" in capsys.readouterr().err
+
+
+def test_live_mode_rejects_public_or_git_tracked_corpus_before_network(
+    pilot_repo, tmp_path, monkeypatch,
+):
+    from unittest.mock import patch
+
+    repo, graph_path, _ = pilot_repo
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(json.dumps({
+        "observations": [{"id": "o1", "project": "demo", "date": "2026-10-17",
+                          "summary": "Synthetic note.", "source_ref": "synthetic-o1"}],
+        "cases": [{"id": "q1", "question": "same_label",
+                   "relevant_node_ids": [], "relevant_pairs": [], "observation_ids": ["o1"]}],
+    }))
+    corpus.chmod(0o644)
+    args = ["--repo", str(repo), "--graph", str(graph_path), "--corpus", str(corpus),
+            "--case-id", "q1", "--project", "demo", "--live",
+            "--approved-paid-use", "--max-requests", "1"]
+    monkeypatch.delenv("JEV_MEMORY_PILOT_API_KEY", raising=False)
+    with patch("tools.jev_memory_pilot_api.call_jev") as post:
+        with pytest.raises(ValueError, match="0600"):
+            main(args)
+        corpus.chmod(0o600)
+        tmp_path.chmod(0o700)
+        assert main(args) == 0
+        post.assert_not_called()  # No key was supplied.
+        tracked = repo / "corpus.json"
+        tracked.write_bytes(corpus.read_bytes())
+        tracked.chmod(0o600)
+        repo.chmod(0o700)
+        args[args.index(str(corpus))] = str(tracked)
+        with pytest.raises(ValueError, match="outside all Git worktrees"):
+            main(args)
 
 
 def test_evaluate_paired_rankings_and_candidate_ceiling():
@@ -336,6 +402,7 @@ def test_evaluate_paired_rankings_and_candidate_ceiling():
     assert result["request_count"] == 1
     assert result["actual_cost_usd"] == 0.0001
     assert result["paired"]["q1"]["precision_at_5_delta"] == 0.2
+    assert result["paired"]["q2"]["recall_at_5_delta"] is None
 
     assisted["q1"]["usage_cost"] = None
     with pytest.raises(ValueError, match="actual cost"):
@@ -347,4 +414,15 @@ def test_evaluate_paired_rankings_and_candidate_ceiling():
     assisted["q1"]["candidate_node_ids"] = pool
     baseline["q1"]["request_count"] = 1
     with pytest.raises(ValueError, match="baseline"):
+        evaluate(cases, baseline, assisted)
+    baseline["q1"]["request_count"] = 0
+    assisted["q1"]["suggestions"] = [["a", "o1"], ["a", "o1"]]
+    with pytest.raises(ValueError, match="duplicate suggestion"):
+        evaluate(cases, baseline, assisted)
+    assisted["q1"]["suggestions"] = [["outside", "o1"]]
+    with pytest.raises(ValueError, match="invalid or duplicate suggestion"):
+        evaluate(cases, baseline, assisted)
+    assisted["q1"]["suggestions"] = [["a", "o1"]]
+    baseline["q1"]["candidate_node_ids"] = ["a", "a", "c", "d", "e", "f"]
+    with pytest.raises(ValueError, match="invalid candidate pool"):
         evaluate(cases, baseline, assisted)

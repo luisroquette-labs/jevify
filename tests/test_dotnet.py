@@ -3,7 +3,10 @@ from pathlib import Path
 import shutil
 import tempfile
 import pytest
-from graphify.extract import extract, extract_sln, extract_slnx, extract_csproj, extract_xaml, extract_razor
+from graphify.extract import (
+    extract, extract_sln, extract_slnx, extract_csproj, extract_xaml, extract_razor,
+    extract_lazarus_package,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -171,6 +174,23 @@ def test_csproj_invalid_xml():
         f.flush()
         r = extract_csproj(Path(f.name))
     assert "error" in r
+
+
+@pytest.mark.parametrize("suffix, extractor", [
+    (".csproj", extract_csproj),
+    (".slnx", extract_slnx),
+    (".xaml", extract_xaml),
+    (".lpk", extract_lazarus_package),
+])
+def test_project_xml_rejects_utf16_entity_declaration(tmp_path, suffix, extractor):
+    xml = ('<?xml version="1.0" encoding="utf-16"?>'
+           '<!DOCTYPE Project [<!ENTITY x "expanded">]>'
+           '<Project><Name>&x;</Name></Project>')
+    path = tmp_path / f"hostile{suffix}"
+    path.write_bytes(xml.encode("utf-16"))
+    result = extractor(path)
+    assert result["nodes"] == [] and result["edges"] == []
+    assert "error" in result
 
 
 # ── .xaml ────────────────────────────────────────────────────────────────────

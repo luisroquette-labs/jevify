@@ -2,6 +2,18 @@
 
 This fork is the home of [Jeviphy for Claude Code and Codex](skills/jeviphy/SKILL.md): an offline-first Graphify and Claude Mem skill with optional Jev relevance decisions. The [upstream pilot PR](https://github.com/Graphify-Labs/graphify/pull/4530) remains a separate technical feasibility proposal; no Jev quality gain is claimed.
 
+## Use Jeviphy
+
+Jeviphy uses Graphify to build and query a code graph. It adds selected Claude Mem observations and can optionally use Jev to rank links between those observations and graph nodes. The Graphify engine remains a dependency; Jev calls are off by default.
+
+1. Clone this repository and install [`skills/jeviphy`](skills/jeviphy/SKILL.md) as a skill in Claude Code or Codex. The skill contains the build commands, corpus schema, and privacy rules.
+2. In Claude Code, ask `/jeviphy` to investigate a question in a repository. In Codex, ask `$jeviphy` the same question. Name the project and the observations you want considered.
+3. The skill checks that `graphify-out/graph.json` matches the repository HEAD, builds it offline if needed, and runs the original Graphify query as the baseline. The [runner](skills/jeviphy/scripts/run.py) accepts a selected corpus outside Git for an offline comparison.
+
+The pilot currently has synthetic tests and a [documented evaluation protocol](docs/jev-memory-pilot-evaluation.md). It has no measured gain on real memory. A paid Jev request requires a separate review of the exact private payload and explicit approval; never put memory corpora or payloads in a commit or PR. The code and skill are available under this repository's existing [Apache-2.0 license](LICENSE), subject to the licenses of any separate services used with it.
+
+## Graphify base
+
 <p align="center">
   <a href="https://graphify.com"><img src="https://raw.githubusercontent.com/Graphify-Labs/graphify/v8/docs/graphify-logo.png" width="360" height="189" alt="Graphify"/></a>
 </p>

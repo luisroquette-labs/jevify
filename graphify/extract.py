@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePath
 from typing import Any, Callable
 
+from defusedxml.common import DefusedXmlException
+
 from .cache import load_cached, save_cached
 from .mcp_ingest import extract_mcp_config, is_mcp_config_path
 from .manifest_ingest import extract_package_manifest, is_package_manifest_path
@@ -411,7 +413,8 @@ def _suppress_ambiguous_python_imports(
             str(module_name), str(edge.get("source_file", "")),
             str(edge.get("source_location", "")), str(edge.get("source", "")),
         ))
-        target = _make_id(f"ambiguous_python_import_{hashlib.sha1(identity.encode()).hexdigest()[:12]}")
+        digest = hashlib.sha1(identity.encode(), usedforsecurity=False).hexdigest()[:12]
+        target = _make_id(f"ambiguous_python_import_{digest}")
         while target in node_ids:
             target += "_"
         edge["target"] = target
@@ -7585,7 +7588,7 @@ def extract_lazarus_package(path: Path) -> dict:
     - package --contains--> listed unit
     """
     try:
-        import xml.etree.ElementTree as ET
+        from defusedxml import ElementTree as ET
         src = path.read_bytes()
     except OSError as e:
         return {"nodes": [], "edges": [], "error": str(e)}
@@ -7597,7 +7600,7 @@ def extract_lazarus_package(path: Path) -> dict:
                 "error": "refusing XML with DOCTYPE/ENTITY declaration"}
 
     try:
-        xml_root = ET.fromstring(src)
+        xml_root = ET.fromstring(src, forbid_dtd=True)
     except Exception as e:
         return {"nodes": [], "edges": [], "error": str(e)}
 
@@ -7690,7 +7693,7 @@ def extract_slnx(path: Path) -> dict:
     Project="..."/>`` children. Unlike .sln there are no GUIDs -- projects are
     identified by their path.
     """
-    import xml.etree.ElementTree as ET
+    from defusedxml import ElementTree as ET
 
     try:
         src = path.read_bytes()
@@ -7704,8 +7707,8 @@ def extract_slnx(path: Path) -> dict:
                 "error": "refusing XML with DOCTYPE/ENTITY declaration"}
 
     try:
-        tree = ET.fromstring(src)
-    except ET.ParseError as e:
+        tree = ET.fromstring(src, forbid_dtd=True)
+    except (ET.ParseError, DefusedXmlException) as e:
         return {"nodes": [], "edges": [], "error": f"XML parse error: {e}"}
 
     file_nid = _make_id(str(path))
@@ -7769,7 +7772,7 @@ def extract_slnx(path: Path) -> dict:
 
 def extract_csproj(path: Path) -> dict:
     """Extract packages, project refs, and target framework from a .csproj/.fsproj/.vbproj."""
-    import xml.etree.ElementTree as ET
+    from defusedxml import ElementTree as ET
 
     try:
         src = path.read_bytes()
@@ -7783,8 +7786,8 @@ def extract_csproj(path: Path) -> dict:
                 "error": "refusing XML with DOCTYPE/ENTITY declaration"}
 
     try:
-        tree = ET.fromstring(src)
-    except ET.ParseError as e:
+        tree = ET.fromstring(src, forbid_dtd=True)
+    except (ET.ParseError, DefusedXmlException) as e:
         return {"nodes": [], "edges": [], "error": f"XML parse error: {e}"}
 
     file_nid = _make_id(str(path))
@@ -8280,7 +8283,7 @@ def _xaml_communitytoolkit_members(vm_node: dict) -> tuple[dict[str, dict], list
 
 def extract_xaml(path: Path) -> dict:
     """Extract WPF/XAML structure, bindings, x:Class, and event handler references."""
-    import xml.etree.ElementTree as ET
+    from defusedxml import ElementTree as ET
 
     try:
         src = path.read_bytes()
@@ -8294,8 +8297,8 @@ def extract_xaml(path: Path) -> dict:
                 "error": "refusing XML with DOCTYPE/ENTITY declaration"}
 
     try:
-        tree = ET.fromstring(src)
-    except ET.ParseError as e:
+        tree = ET.fromstring(src, forbid_dtd=True)
+    except (ET.ParseError, DefusedXmlException) as e:
         return {"nodes": [], "edges": [], "error": f"XML parse error: {e}"}
 
     text = src.decode("utf-8", errors="replace")

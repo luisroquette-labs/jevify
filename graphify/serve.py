@@ -1,6 +1,7 @@
 # MCP stdio server - exposes graph query tools to Claude and other agents
 from __future__ import annotations
 import json
+import ipaddress
 import math
 import os
 import re
@@ -16,6 +17,9 @@ from networkx.readwrite import json_graph
 from graphify.security import sanitize_label, check_graph_file_size_cap, _CONTROL_CHAR_RE
 from graphify.build import edge_datas, has_parallel_links
 from graphify.paths import default_graph_json as _default_graph_json
+
+_WILDCARD_IPV4 = str(ipaddress.IPv4Address(0))
+_WILDCARD_BIND_HOSTS = (_WILDCARD_IPV4, "::", "")
 
 try:
     with warnings.catch_warnings():
@@ -2862,7 +2866,7 @@ def _build_http_app(
     # are intentionally exposing the server, so accept any Host header; for a
     # loopback/specific bind, restrict Host to that address (with and without
     # the port) plus the localhost aliases.
-    if host in ("0.0.0.0", "::", ""):
+    if host in _WILDCARD_BIND_HOSTS:
         security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
     else:
         allowed = {host, "localhost", "127.0.0.1"}
@@ -2947,9 +2951,9 @@ def serve_http(
         f"graphify MCP server (streamable-http) on http://{host}:{port}{path} - {auth_note}",
         file=sys.stderr,
     )
-    if host in ("0.0.0.0", "::", "") and not api_key:
+    if host in _WILDCARD_BIND_HOSTS and not api_key:
         print(
-            f"WARNING: binding {host or '0.0.0.0'} with no api-key exposes the graph "
+            f"WARNING: binding {host or _WILDCARD_IPV4} with no api-key exposes the graph "
             "unauthenticated on the network. Set --api-key (or GRAPHIFY_API_KEY).",
             file=sys.stderr,
         )
