@@ -114,7 +114,7 @@ def candidate_pool(
     ]
 
 
-def load_case(path: Path, case_id: str, graph_node_ids: set[str], project: str) -> dict:
+def load_case(path: Path, case_id: str, graph_node_ids: set[str] | None, project: str) -> dict:
     """Select one labeled case and its observations from a local corpus."""
     corpus = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(corpus, dict):
@@ -140,7 +140,7 @@ def load_case(path: Path, case_id: str, graph_node_ids: set[str], project: str) 
     selected = case.get("observation_ids")
     if not isinstance(gold, list) or not all(isinstance(nid, str) for nid in gold):
         raise ValueError("relevant node IDs are missing")
-    if len(set(gold)) != len(gold) or set(gold) - graph_node_ids:
+    if len(set(gold)) != len(gold) or (graph_node_ids is not None and set(gold) - graph_node_ids):
         raise ValueError("unknown node or duplicate gold node")
     if (not isinstance(selected, list) or len(selected) > 3
             or any(not isinstance(obs_id, str) for obs_id in selected)
@@ -367,6 +367,19 @@ def query_with_decisions(
     return answer_text
 
 
+def query_unscoped_graphify(graph_path: Path, question: str) -> str:
+    """Use Graphify directly when no memory source can participate in retrieval."""
+    result = subprocess.run(
+        [sys.executable, "-m", "graphify", "query", question, "--graph", str(graph_path)],
+        capture_output=True, text=True,
+        env={**os.environ, "GRAPHIFY_QUERY_LOG_DISABLE": "1", "PYTHONHASHSEED": "0"},
+    )
+    if result.returncode == 4 and result.stdout == "No matching nodes found.\n" and not result.stderr:
+        return result.stdout
+    result.check_returncode()
+    return result.stdout
+
+
 def precision_at_k(ranked: list[str], relevant: set[str], k: int = 5) -> float:
     return len(set(ranked[:k]) & relevant) / k
 
@@ -502,6 +515,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--print-synthetic-payload requires --dry-run")
     if args.live:
         validate_private_corpus(args.corpus)
+    if args.candidate_mode == "fast-source" and not (args.live or args.dry_run or args.decisions):
+        unscoped_case = load_case(args.corpus, args.case_id, None, args.project)
+        if not any(obs.get("source_paths") for obs in unscoped_case["observations"]):
+            print(query_unscoped_graphify(args.graph, unscoped_case["question"]), end="")
+            return 0
     graph = _read_graph(str(args.graph))
     case = load_case(args.corpus, args.case_id, set(graph.nodes), args.project)
     source_paths = list(dict.fromkeys(

@@ -8,14 +8,15 @@ import hashlib
 import io
 import json
 import os
+import random
 import statistics
 import subprocess
-import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 
 from graphify.serve import _read_graph
-from tools.jev_memory_pilot import candidate_pool, query_with_decisions
+from tools.jev_memory_pilot import candidate_pool, query_unscoped_graphify, query_with_decisions
 from tools.jeviphy_stress import percentile
 
 
@@ -25,6 +26,26 @@ def answer_hits(output: str, gold: list[str], graph) -> int:
         f'[src={graph.nodes[nid].get("source_file", "")} ' in output
         for nid in gold
     )
+
+
+def source_p95_advantage_interval(rows: list[dict], *, resamples: int = 10_000) -> list[float]:
+    """Resample cases, keeping their repeated paired timings together."""
+    by_case = defaultdict(list)
+    for row in rows:
+        if row["source_backed"]:
+            by_case[row["id"]].append(row)
+    ids = sorted(by_case)
+    if not ids:
+        raise ValueError("source-backed cases are required")
+    rng = random.Random(20261018)
+    advantages = []
+    for _ in range(resamples):
+        sample = [row for case_id in rng.choices(ids, k=len(ids)) for row in by_case[case_id]]
+        advantages.append(
+            percentile([row["baseline_ms"] for row in sample], .95)
+            - percentile([row["jeviphy_ms"] for row in sample], .95)
+        )
+    return [round(percentile(advantages, quantile), 2) for quantile in (.025, .975)]
 
 
 def main() -> None:
@@ -45,6 +66,12 @@ def main() -> None:
     cases = manifest["cases"]
     if len(cases) != 30 or len({case["id"] for case in cases}) != 30:
         parser.error("expected 30 distinct frozen cases")
+    if (sum(case["source_backed"] for case in cases) != 20
+            or any(not case["source_paths"] or not case["gold_node_ids"]
+                   for case in cases if case["source_backed"])
+            or any(case["source_paths"] or case["gold_node_ids"]
+                   for case in cases if not case["source_backed"])):
+        parser.error("expected 20 labeled source cases and ten empty controls")
     graph_hash = hashlib.sha256(args.graph.read_bytes()).hexdigest()
     source_commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=args.repo, text=True,
@@ -77,7 +104,9 @@ def main() -> None:
 
     def run(case: dict, assisted: bool) -> tuple[float, str]:
         start = time.perf_counter_ns()
-        if assisted:
+        if assisted and not case["source_paths"]:
+            output = query_unscoped_graphify(args.graph, case["question"])
+        elif assisted:
             loaded = _read_graph(str(args.graph))
             candidates = candidate_pool(
                 args.graph, args.repo, case["question"], [case["summary"]],
@@ -91,12 +120,7 @@ def main() -> None:
                     candidate_mode="fast-source", graph=loaded,
                 )
         else:
-            output = subprocess.run(
-                [sys.executable, "-m", "graphify", "query", case["question"],
-                 "--graph", str(args.graph)],
-                env={**os.environ, "GRAPHIFY_QUERY_LOG_DISABLE": "1"},
-                capture_output=True, text=True, check=True,
-            ).stdout
+            output = query_unscoped_graphify(args.graph, case["question"])
         return (time.perf_counter_ns() - start) / 1_000_000, output
 
     run(cases[0], False)
@@ -125,6 +149,8 @@ def main() -> None:
 
     baseline_ms = [row["baseline_ms"] for row in rows]
     jeviphy_ms = [row["jeviphy_ms"] for row in rows]
+    source_rows = [row for row in rows if row["source_backed"]]
+    controls = [row for row in rows if not row["source_backed"]]
     summary = {
         "cases": len(cases), "paired_runs": len(rows),
         "source_backed_cases": sum(case["source_backed"] for case in cases),
@@ -142,6 +168,17 @@ def main() -> None:
         "baseline_p95_ms": round(percentile(baseline_ms, .95), 2),
         "jeviphy_p95_ms": round(percentile(jeviphy_ms, .95), 2),
         "jeviphy_faster_pairs": sum(a < b for a, b in zip(jeviphy_ms, baseline_ms)),
+        "source_baseline_p50_ms": round(percentile([row["baseline_ms"] for row in source_rows], .5), 2),
+        "source_jeviphy_p50_ms": round(percentile([row["jeviphy_ms"] for row in source_rows], .5), 2),
+        "source_baseline_p95_ms": round(percentile([row["baseline_ms"] for row in source_rows], .95), 2),
+        "source_jeviphy_p95_ms": round(percentile([row["jeviphy_ms"] for row in source_rows], .95), 2),
+        "source_p95_advantage_ci95_ms": source_p95_advantage_interval(rows),
+        "source_faster_pairs": sum(row["jeviphy_ms"] < row["baseline_ms"] for row in source_rows),
+        "first_pass_source_answer_losses": sum(
+            row["jeviphy_answer_hits"] < row["baseline_answer_hits"]
+            for row in rows[:len(cases)] if row["source_backed"]
+        ),
+        "controls_byte_identical": all(row["same_answer"] for row in controls),
     }
     report = {
         "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(),

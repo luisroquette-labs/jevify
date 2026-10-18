@@ -16,6 +16,7 @@ from tools.jev_memory_pilot import (
     evaluate,
     load_case,
     main,
+    query_unscoped_graphify,
     query_with_decisions,
     read_sidecar,
     write_private_sidecar,
@@ -220,6 +221,37 @@ def test_fast_source_uses_seeded_graphify_and_invalid_decisions_fall_back(pilot_
         text=True,
     )
     assert fallback == expected_unseeded
+
+
+def test_fast_source_without_cited_files_delegates_before_graph_load(
+    pilot_repo, tmp_path, monkeypatch, capsys,
+):
+    repo, graph_path, _ = pilot_repo
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(json.dumps({
+        "observations": [{"id": "o1", "project": "demo", "date": "2026-10-17",
+                          "summary": "Synthetic note.", "source_ref": "synthetic-o1"}],
+        "cases": [{"id": "q1", "question": "same_label", "relevant_node_ids": [],
+                   "relevant_pairs": [], "observation_ids": ["o1"]}],
+    }))
+    expected = subprocess.check_output(
+        [sys.executable, "-m", "graphify", "query", "same_label", "--graph", str(graph_path)],
+        text=True,
+    )
+    def unexpected_load(_path):
+        raise AssertionError("Jeviphy must not load the graph for an unscoped query")
+    monkeypatch.setattr("tools.jev_memory_pilot._read_graph", unexpected_load)
+    assert main(["--repo", str(repo), "--graph", str(graph_path), "--corpus", str(corpus),
+                 "--case-id", "q1", "--project", "demo", "--candidate-mode", "fast-source"]) == 0
+    assert capsys.readouterr().out == expected
+    assert not (graph_path.parent / "jev-memory-decisions.json").exists()
+
+
+def test_unscoped_graphify_accepts_its_no_match_exit_code(pilot_repo):
+    _, graph_path, _ = pilot_repo
+    assert query_unscoped_graphify(graph_path, "unfindable-symbol-987654") == (
+        "No matching nodes found.\n"
+    )
 
 
 def test_load_case_checks_full_graph_not_candidate_pool(tmp_path):
