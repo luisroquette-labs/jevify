@@ -4,7 +4,7 @@
 
 The offline harness is implemented. Synthetic tests prove bounded candidate selection, typed pair mapping, exact fallback to the unseeded Graphify query, and graph/learning-sidecar integrity. They do **not** establish that Jev improves retrieval on real memory.
 
-No real claude-mem record or private source excerpt has been sent to Jev. No paid request has run. The real paired result remains pending the data and cost review described below. The existing upstream draft PR requests design feedback without asserting an outcome.
+No real claude-mem record or private source excerpt has been sent to Jev. No paid request has run. The paired Jev reranking result remains pending the data and cost review described below. The source-reviewed offline candidate comparison below does not measure Jev. The existing upstream draft PR requests design feedback without asserting an outcome.
 
 One private evaluation checkout is pinned to its source commit and has an AST-only graph. A private cohort has 30 draft questions: the original three cases plus 27 additional questions from the same project's memory index. An agent inspected the selected memory records and audited their source paths against all 30 deterministic candidate pools. This audit does not provide independently reviewed relevance labels. The original three exact local payload previews contain 16, 8, and 5 pairs. No paid request has run, and there is no measured Jev gain.
 
@@ -20,7 +20,20 @@ This shows a practical ceiling for reranking the current ten candidates: many so
 
 An optional `--candidate-mode memory` now takes the first seven candidates from the question-only Graphify ranking and up to three from a separate search over the selected memory summaries. It deduplicates the union and fills spare slots from the question ranking. The default `question` mode and the unseeded answer fallback are unchanged. No Jev request is needed to compare candidate pools.
 
-On the exploratory 30-question cohort, exact memory-cited source-file overlap in the top ten rose from 6/26 to 10/26 without losing a previous file hit. This variant was chosen after inspecting those cases, so they cannot validate it independently. A second cohort was selected from all previously unused memories with an implementation file represented in the pinned graph and frozen before running the variant. It contains 19 memories predating the graph commit and one later memory used as a stale-code control. On the 19 primary cases, overlap moved from 7/19 to 8/19, again without losing a previous hit; neither arm hit the stale control. This selected cohort is not random or independently labeled. The result is a modest source-path proxy, not proof of better answers or a Jev gain. The private case details and results remain outside Git.
+On the exploratory 30-question cohort, exact memory-cited source-file overlap in the top ten rose from 6/26 to 10/26 without losing a previous file hit. This variant was chosen after inspecting those cases, so they cannot validate it independently. A second cohort was selected from all previously unused memories with an implementation file represented in the pinned graph and frozen before running the variant. It contains 19 memories predating the graph build and one later memory used as a stale-code control. On the 19 primary cases, overlap moved from 7/19 to 8/19, again without losing a previous hit; neither arm hit the stale control. This selected cohort is not random or independently labeled. The result is a modest source-path proxy, not proof of better answers or a Jev gain. The private case details and results remain outside Git.
+
+## Source-reviewed offline candidate check
+
+The frozen second cohort was reviewed against its pinned AST graph and a clean source checkout before viewing candidate IDs. One pre-build case conflicted with the pinned source and was excluded; the post-build stale-code control was kept separate. Of the 18 scored cases, 16 had at least one relevant graph node and two had none. After saving initial labels, the reviewer inspected the sorted union of candidate IDs without arm or rank and added directly relevant nodes before scoring. Private labels and case details remain outside Git.
+
+| Measure | Question mode | Memory 7+3 mode |
+| --- | ---: | ---: |
+| Positive cases with a relevant top-ten candidate | 8/16 | 9/16 |
+| Mean candidate recall on positive cases | 0.176 | 0.210 |
+| Mean precision@5 on scored cases | 0.078 | 0.078 |
+| Mean recall@5 on positive cases | 0.094 | 0.094 |
+
+The first seven candidates are identical by design, so no scored case gained or lost a relevant node in the top five. The extra memory candidates only raise the top-ten ceiling for a later reranker. A one-case top-ten gain does not establish better answers. One agent supplied both arms' labels, the review was not independent, the cohort selected source-bearing memories, and relevant nodes outside the reviewed sources or candidate union may remain unlabeled. This is an exploratory candidate-pool check, not the 30-question paired Jev evaluation below. Jev suggestions, answer quality, and latency were not measured; paid request count and actual cost were zero. The flag remains experimental.
 
 ## Frozen labeling rule for the real cohort
 
