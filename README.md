@@ -12,6 +12,8 @@ Jeviphy uses Graphify to build and query a code graph. It adds selected Claude M
 
 The pilot currently has synthetic tests and a [documented evaluation protocol](docs/jev-memory-pilot-evaluation.md). It has no measured gain on real memory. A paid Jev request requires a separate review of the exact private payload and explicit approval; never put memory corpora or payloads in a commit or PR. The code and skill are available under this repository's existing [Apache-2.0 license](LICENSE), subject to the licenses of any separate services used with it.
 
+Run the [one-command offline demo](docs/jeviphy-demo.md) to see a synthetic memory link change a Graphify result without an API key.
+
 ## Graphify base
 
 <p align="center">
