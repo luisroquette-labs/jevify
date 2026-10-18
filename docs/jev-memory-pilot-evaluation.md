@@ -2,6 +2,8 @@
 
 ## Current result
 
+An independent, 30-case [SWEN offline stress test](jeviphy-independent-stress-20261018.md) now provides a separate candidate-retrieval check. Memory mode raised exact cited-file overlap in the top ten from 5/20 to 18/20 source-backed cases, but its first five candidates matched question mode in all those cases and its p50/p95 latency was slower. This is a provenance proxy without semantic labels or Jev calls; the advancement gate failed and later roadmap stages are paused.
+
 The offline harness is implemented. Synthetic tests prove bounded candidate selection, typed pair mapping, exact fallback to the unseeded Graphify query, and graph/learning-sidecar integrity. They do **not** establish that Jev improves retrieval on real memory.
 
 No real claude-mem record or private source excerpt has been sent to Jev. No paid request has run. The paired Jev reranking result remains pending the data and cost review described below. The source-reviewed offline candidate comparison below does not measure Jev. The existing upstream draft PR requests design feedback without asserting an outcome.
