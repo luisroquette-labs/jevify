@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
-GRAPHIFY_COMMIT = "86c57be8204673c2a1b9849a3292a7dd3ab373d8"
+GRAPHIFY_COMMIT = "4342e67107f77db54098d7873b563ff20830dcb8"
 LANGUAGE_TARGETS = {
     "C": 14,
     "C++": 11,

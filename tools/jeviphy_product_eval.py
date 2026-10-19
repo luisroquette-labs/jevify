@@ -73,6 +73,15 @@ def current_pins(manifest: Path, graphify_commit: str, repo: Path, argv: Sequenc
         ["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=repo, text=True
     ).strip():
         raise ValueError("Jeviphy checkout must be clean before a benchmark run")
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", graphify_commit, "HEAD"], cwd=repo
+    ).returncode != 0:
+        raise ValueError("Graphify commit is not an ancestor of the Jeviphy checkout")
+    if subprocess.run(
+        ["git", "diff", "--quiet", graphify_commit, "--", "graphify", "pyproject.toml", "uv.lock"],
+        cwd=repo,
+    ).returncode != 0:
+        raise ValueError("Graphify engine differs from the pinned commit")
     jeviphy_commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=repo, text=True
     ).strip()

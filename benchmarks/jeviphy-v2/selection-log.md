@@ -2,7 +2,7 @@
 
 - Source: [`SWE-bench/SWE-bench_Multilingual`](https://huggingface.co/datasets/SWE-bench/SWE-bench_Multilingual)
 - Dataset revision: `846e647b9f33c0b51b739d005d13d85493c9af09`
-- Graphify revision: `86c57be8204673c2a1b9849a3292a7dd3ab373d8`
+- Graphify revision: `4342e67107f77db54098d7873b563ff20830dcb8`
 - Selection date: 2026-10-19
 - License of the dataset: MIT
 
