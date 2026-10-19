@@ -33,13 +33,19 @@ The v2.1 X API returned `402 credits depleted`, so the approved record was publi
 
 ## Fourteen-day cadence
 
-| Day | Action | Asset | Success signal |
+No more than one Jeviphy publication per calendar day across both profiles. Keep at least 48 hours between planned posts, review the previous post's response before releasing the next one, and pause the sequence when a technical reply deserves an answer.
+
+| Date and time (America/Sao_Paulo) | Profile | Publication | Success signal |
 | --- | --- | --- | --- |
-| 0 | Publish both launch posts and direct technical outreach | Evidence page and benchmark summary | Public URLs and delivery records |
-| 2 | Post the 60-second offline demo | Terminal capture plus demo command | Repository visits and demo runs |
-| 4 | Explain the failed paid-Jev result | One chart with the 19-call result | Technical replies and design suggestions |
-| 7 | Publish a Graphify-versus-Jeviphy method thread | Reproducibility checklist and hashes | Clones, stars, issues, and independent runs |
-| 14 | Report outcomes without inflating them | Public scorecard and next experiment | External review or a reproducible counterexample |
+| 20 Oct, 10:30 | `@luisroquette` | 60-second offline demo in Portuguese | Repository visits and demo runs |
+| 22 Oct, 13:30 | `@thedoomguy_ai` | Moritz Kremb evaluation request | Reply or independent review |
+| 24 Oct, 11:00 | `@thedoomguy_ai` | Failed paid-Jev result and what changed | Typed-question design suggestions |
+| 26 Oct, 10:30 | `@thedoomguy_ai` | Claude Memory source-path interoperability request | Technical critique or test |
+| 28 Oct, 13:30 | `@thedoomguy_ai` | Graphify method thread and upstream review request | Qualified upstream discussion |
+| 30 Oct, 10:30 | `@thedoomguy_ai` | TypeSafe request for a better bounded Jev design | Jev design feedback |
+| 2 Nov, 13:30 | `@luisroquette` | Public scorecard and next experiment | Reproduction, review, or counterexample |
+
+The four outreach messages in the launch record were mistakenly published together on 18 October instead of being scheduled on this cadence. Their deletion and rescheduling must preserve the correction record and the original resulting URLs.
 
 ## Measurement and decisions
 
