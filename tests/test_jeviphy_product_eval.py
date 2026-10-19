@@ -28,7 +28,9 @@ def arm(name="graphify", status="completed", success=True):
 
 
 def pair(case_id="case-1"):
-    return PairRecord(case_id, 0, ("graphify", "jeviphy"), "c" * 64, arm(), arm("jeviphy"))
+    return PairRecord(
+        case_id, "valid_source", 0, ("graphify", "jeviphy"), "c" * 64, arm(), arm("jeviphy")
+    )
 
 
 def pins(command="a"):

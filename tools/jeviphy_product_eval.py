@@ -37,11 +37,14 @@ class ArmRecord:
     error_sha256: str
     input_tokens: int | None = None
     output_tokens: int | None = None
+    top5_hits: int | None = None
+    first_hit: bool | None = None
 
 
 @dataclass(frozen=True)
 class PairRecord:
     case_id: str
+    stratum: str
     pass_index: int
     order: tuple[str, str]
     graph_sha256: str
@@ -169,8 +172,12 @@ def seal_journal(path: Path, output: Path, pins: RunPins, expected: set[tuple[st
         json.dump(payload, stream, sort_keys=True)
 
 
-def _candidate_record(arm: str, started: int, candidates: list[dict]) -> ArmRecord:
+def _candidate_record(
+    arm: str, started: int, candidates: list[dict], gold_files: Sequence[str]
+) -> ArmRecord:
     output = json.dumps(candidates, sort_keys=True, separators=(",", ":")).encode()
+    ranked_files = [item.get("source_file") for item in candidates]
+    gold = set(gold_files)
     return ArmRecord(
         arm=arm,
         status="completed",
@@ -178,6 +185,8 @@ def _candidate_record(arm: str, started: int, candidates: list[dict]) -> ArmReco
         duration_ms=(time.perf_counter_ns() - started) / 1_000_000,
         output_sha256=sha256_bytes(output),
         error_sha256=sha256_bytes(b""),
+        top5_hits=len(gold & set(ranked_files[:5])),
+        first_hit=bool(ranked_files and ranked_files[0] in gold),
     )
 
 
@@ -236,13 +245,14 @@ def run_retrieval_pair(
             else:
                 candidates = baseline
         results[arm] = candidates
-        records[arm] = _candidate_record(arm, started, candidates)
+        records[arm] = _candidate_record(arm, started, candidates, case.gold_files)
     after = file_sha256(graph_path)
     if after != before:
         raise ValueError("graph changed during retrieval pair")
     return (
         PairRecord(
             case_id=case.id,
+            stratum=case.stratum,
             pass_index=pass_index,
             order=order,
             graph_sha256=before,
