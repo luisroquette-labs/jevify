@@ -4,7 +4,7 @@
 
 Jeviphy is an open-source Graphify fork for Claude Code and Codex. It uses source paths from reviewed memory to focus Graphify before the coding agent answers.
 
-The public claim is deliberately narrow: on the frozen synthetic Click cohort, Jeviphy `fast-source` found 11/40 exact targets in the top five versus 2/40 for unscoped Graphify, with overall p95 of 212.95 ms versus 275.69 ms. This is evidence for that local source-cited workflow, not a general benchmark of every repository or task.
+The public claim is deliberately narrow: on the frozen synthetic Click cohort, Jeviphy `fast-source` found 11/40 exact targets in the top five versus 2/40 for unscoped Graphify, with overall p95 of 212.95 ms versus 275.69 ms. Say that Jeviphy performed better on those measured points in this experiment. Present it as a promising result and an invitation to reproduce, never as proof that Jeviphy is generally better than Graphify.
 
 Paid Jev stays optional and off by default. Its 19-call pilot did not improve top-five hits and added latency. This negative result is part of the product story because it shows where the current value comes from.
 
@@ -49,7 +49,16 @@ The existing 18 October posts stay published. Do not repeat those mentions. From
 
 ### Outreach packet
 
-Every contact uses the same compact structure: the problem in one sentence, the independently measured result in one sentence, one decision request, and no more than three links. Use the public page for orientation, the reproducible report for evidence, and the relevant PR or Discussion for the conversation. Never present Jeviphy as endorsed by Graphify or Claude Mem, and never attribute the measured gain to paid Jev.
+Every contact uses the same compact structure: the problem in one sentence, the independently measured result in one sentence, one limitation, one suggestion or question, and no more than three links. Use "performed better on the measured points" or "showed a promising result in this cohort". Avoid "beat", "won", "replacement", or any universal comparison. Use the public page for orientation, the reproducible report for evidence, and the relevant PR or Discussion for the conversation. Never present Jeviphy as endorsed by Graphify or Claude Mem, and never attribute the measured gain to paid Jev.
+
+## Autonomous delivery
+
+The campaign does not depend on an open Codex session:
+
+1. A macOS LaunchAgent checks the two maintainer tasks every 15 minutes. It posts the Graphify PR update and creates the Claude Mem Discussion through the authenticated `gh` CLI. Remote HTML markers and a local state file make both actions idempotent.
+2. Social Machine v3.1 owns the two public X posts. Its Vercel cron claims one due row at a time from `scheduled_outreach`, publishes the exact approved copy, and persists the resulting post ID or retry state.
+3. Conditional follow-ups stay unscheduled. A maintainer reply changes the next message, so automatically repeating a mention would violate the campaign tone.
+4. The 2 November scorecard stays unscheduled because its numbers must be computed from the real replies and visits collected by then.
 
 ## Fourteen-day cadence
 
