@@ -15,9 +15,7 @@ def manifest_dict():
         {
             "id": f"repo-{index}",
             "url": f"https://github.com/example/repo-{index}",
-            "commit": f"{index:x}" * 40,
             "language": ("Python", "TypeScript", "Go")[index % 3],
-            "license": "MIT",
         }
         for index in range(1, 7)
     ]
@@ -30,10 +28,13 @@ def manifest_dict():
             {
                 "id": f"case-{index:03}",
                 "repo_id": f"repo-{repo_index}",
+                "base_commit": SHA,
                 "stratum": stratum,
                 "question": f"What behavior should case {index} preserve?",
-                "oracle_argv": ["pytest", f"tests/test_case_{index}.py"],
                 "timeout_seconds": 300,
+                "image": f"swebench/example:{index}",
+                "fail_to_pass": [f"test_case_{index}"],
+                "pass_to_pass": [],
                 "gold_files": [f"src/file_{index}.py"],
                 "gold_symbols": [f"target_{index}"],
                 "memory": {
@@ -45,7 +46,14 @@ def manifest_dict():
                 "holdout": repo_index == 1,
             }
         )
-    return {"schema_version": 2, "graphify_commit": SHA, "repos": repos, "cases": cases}
+    return {
+        "schema_version": 2,
+        "graphify_commit": SHA,
+        "dataset_id": "SWE-bench/SWE-bench_Multilingual",
+        "dataset_revision": SHA,
+        "repos": repos,
+        "cases": cases,
+    }
 
 
 def write_manifest(tmp_path, data):
@@ -64,9 +72,9 @@ def test_contract_accepts_exact_frozen_shape(tmp_path):
     ("mutation", "message"),
     [
         ("duplicate_id", "duplicate case ID"),
-        ("branch_ref", "repository commit must be 40 lowercase hex characters"),
+        ("branch_ref", "base_commit must be 40 lowercase hex characters"),
         ("leaked_symbol", "gold symbol leaked"),
-        ("missing_oracle", "oracle command is required"),
+        ("missing_oracle", "at least one fail-to-pass test is required"),
         ("short_holdout", "holdout needs at least 20 cases"),
         ("two_languages", "at least 3 languages"),
     ],
@@ -76,11 +84,11 @@ def test_contract_rejects_invalid_cohort(tmp_path, mutation, message):
     if mutation == "duplicate_id":
         data["cases"][1]["id"] = data["cases"][0]["id"]
     elif mutation == "branch_ref":
-        data["repos"][0]["commit"] = "main"
+        data["cases"][0]["base_commit"] = "main"
     elif mutation == "leaked_symbol":
         data["cases"][0]["question"] += " target_0"
     elif mutation == "missing_oracle":
-        data["cases"][0]["oracle_argv"] = []
+        data["cases"][0]["fail_to_pass"] = []
     elif mutation == "short_holdout":
         for case in data["cases"]:
             case["holdout"] = False
@@ -98,8 +106,8 @@ def test_contract_rejects_unsafe_path(tmp_path):
         load_manifest(write_manifest(tmp_path, data))
 
 
-def test_contract_rejects_mixed_holdout_repository(tmp_path):
+def test_contract_requires_exact_holdout_size(tmp_path):
     data = manifest_dict()
     data["cases"][0]["holdout"] = False
-    with pytest.raises(ValueError, match="cannot mix"):
+    with pytest.raises(ValueError, match="at least 20"):
         load_manifest(write_manifest(tmp_path, data))

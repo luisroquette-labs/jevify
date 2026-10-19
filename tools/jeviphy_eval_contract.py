@@ -32,10 +32,13 @@ class MemoryEvidence:
 class EvalCase:
     id: str
     repo_id: str
+    base_commit: str
     stratum: Stratum
     question: str
-    oracle_argv: tuple[str, ...]
     timeout_seconds: int
+    image: str
+    fail_to_pass: tuple[str, ...]
+    pass_to_pass: tuple[str, ...]
     gold_files: tuple[str, ...]
     gold_symbols: tuple[str, ...]
     memory: MemoryEvidence
@@ -46,15 +49,15 @@ class EvalCase:
 class RepoPin:
     id: str
     url: str
-    commit: str
     language: str
-    license: str
 
 
 @dataclass(frozen=True)
 class EvalManifest:
     schema_version: int
     graphify_commit: str
+    dataset_id: str
+    dataset_revision: str
     repos: tuple[RepoPin, ...]
     cases: tuple[EvalCase, ...]
 
@@ -116,16 +119,14 @@ def _memory(data: object, case_id: str) -> MemoryEvidence:
 def _repo(data: object) -> RepoPin:
     if not isinstance(data, dict):
         raise ValueError("repository must be an object")
-    _exact_keys(data, {"id", "url", "commit", "language", "license"}, "repository")
+    _exact_keys(data, {"id", "url", "language"}, "repository")
     url = _string(data["url"], "repository URL")
     if not url.startswith("https://github.com/"):
         raise ValueError("repository URL must be an immutable GitHub source")
     return RepoPin(
         id=_string(data["id"], "repository ID"),
         url=url,
-        commit=_sha(data["commit"], "repository commit"),
         language=_string(data["language"], "repository language"),
-        license=_string(data["license"], "repository license"),
     )
 
 
@@ -135,8 +136,9 @@ def _case(data: object) -> EvalCase:
     _exact_keys(
         data,
         {
-            "id", "repo_id", "stratum", "question", "oracle_argv", "timeout_seconds",
-            "gold_files", "gold_symbols", "memory", "holdout",
+            "id", "repo_id", "base_commit", "stratum", "question", "timeout_seconds",
+            "image", "fail_to_pass", "pass_to_pass", "gold_files", "gold_symbols",
+            "memory", "holdout",
         },
         "case",
     )
@@ -150,19 +152,22 @@ def _case(data: object) -> EvalCase:
     holdout = data["holdout"]
     if not isinstance(holdout, bool):
         raise ValueError(f"case {case_id} holdout must be boolean")
-    oracle = _string_tuple(data["oracle_argv"], f"case {case_id} oracle_argv")
-    if not oracle:
-        raise ValueError("oracle command is required")
+    fail_to_pass = _string_tuple(data["fail_to_pass"], f"case {case_id} fail_to_pass")
+    if not fail_to_pass:
+        raise ValueError("at least one fail-to-pass test is required")
     memory = _memory(data["memory"], case_id)
     if stratum == "no_source" and (memory.source_paths or memory.source_commit):
         raise ValueError(f"case {case_id} no_source evidence must be empty")
     return EvalCase(
         id=case_id,
         repo_id=_string(data["repo_id"], f"case {case_id} repo_id"),
+        base_commit=_sha(data["base_commit"], f"case {case_id} base_commit"),
         stratum=stratum,
         question=_string(data["question"], f"case {case_id} question"),
-        oracle_argv=oracle,
         timeout_seconds=timeout,
+        image=_string(data["image"], f"case {case_id} image"),
+        fail_to_pass=fail_to_pass,
+        pass_to_pass=_string_tuple(data["pass_to_pass"], f"case {case_id} pass_to_pass"),
         gold_files=_string_tuple(data["gold_files"], f"case {case_id} gold_files", paths=True),
         gold_symbols=_string_tuple(data["gold_symbols"], f"case {case_id} gold_symbols"),
         memory=memory,
@@ -173,6 +178,8 @@ def _case(data: object) -> EvalCase:
 def validate_manifest(manifest: EvalManifest) -> None:
     if manifest.schema_version != 2:
         raise ValueError("schema_version must be 2")
+    if manifest.dataset_id != "SWE-bench/SWE-bench_Multilingual":
+        raise ValueError("dataset ID must be SWE-bench Multilingual")
     if len(manifest.repos) < 6:
         raise ValueError("at least 6 repositories are required")
     if len({repo.language.casefold() for repo in manifest.repos}) < 3:
@@ -188,11 +195,7 @@ def validate_manifest(manifest: EvalManifest) -> None:
     unknown_repos = {case.repo_id for case in manifest.cases} - set(repo_ids)
     if unknown_repos:
         raise ValueError("case references unknown repository")
-    holdout_repos = {case.repo_id for case in manifest.cases if case.holdout}
-    for repo_id in holdout_repos:
-        if any(case.repo_id == repo_id and not case.holdout for case in manifest.cases):
-            raise ValueError("holdout repository cannot mix visible and hidden cases")
-    if not holdout_repos or sum(case.holdout for case in manifest.cases) < 20:
+    if sum(case.holdout for case in manifest.cases) != 20:
         raise ValueError("holdout needs at least 20 cases")
     for case in manifest.cases:
         searchable = f"{case.question} {case.memory.summary}".casefold()
@@ -206,12 +209,18 @@ def load_manifest(path: Path) -> EvalManifest:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("manifest must be an object")
-    _exact_keys(data, {"schema_version", "graphify_commit", "repos", "cases"}, "manifest")
+    _exact_keys(
+        data,
+        {"schema_version", "graphify_commit", "dataset_id", "dataset_revision", "repos", "cases"},
+        "manifest",
+    )
     if not isinstance(data["repos"], list) or not isinstance(data["cases"], list):
         raise ValueError("manifest repos and cases must be lists")
     manifest = EvalManifest(
         schema_version=data["schema_version"],
         graphify_commit=_sha(data["graphify_commit"], "Graphify commit"),
+        dataset_id=_string(data["dataset_id"], "dataset ID"),
+        dataset_revision=_sha(data["dataset_revision"], "dataset revision"),
         repos=tuple(_repo(item) for item in data["repos"]),
         cases=tuple(_case(item) for item in data["cases"]),
     )
