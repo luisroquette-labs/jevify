@@ -7,6 +7,17 @@ description: Query a Graphify code graph with selected Claude Mem observations a
 
 Use Graphify's existing graph and query engine. Treat memory links as suggestions with source references, never as proven runtime dependencies.
 
+## Default invocation
+
+When the user invokes Jeviphy without an explicit question:
+
+1. Generate three to five useful questions from the current graph, recent repository changes, and the user's active problem.
+2. Rank them by user impact, operational risk, and how much the graph can clarify.
+3. Select the highest-value question and run the baseline query automatically. Do not ask the user to choose a question first.
+4. Check the selected result against the referenced source files before presenting conclusions. Separate graph suggestions, source-confirmed behavior, and runtime facts.
+
+When the user supplies a question, use it directly. Question generation and baseline queries stay offline and require no paid API approval.
+
 ## Workflow
 
 1. Locate the target Git repository and its `graphify-out/graph.json`. Confirm the graph's `built_at_commit` equals `git rev-parse HEAD`; use the [graph commands](references/graph.md) to build or refresh it offline when absent or stale.
