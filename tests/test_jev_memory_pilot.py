@@ -141,7 +141,7 @@ def test_source_backed_memory_candidates_keep_question_eight(pilot_repo, monkeyp
             candidate_pool(graph_path, repo, "question", ["summary"], source_paths=[path])
 
 
-def test_fast_source_scores_only_cited_nodes_once_and_falls_back(pilot_repo, monkeypatch):
+def test_fast_source_reserves_question_winner_inside_cited_nodes(pilot_repo, monkeypatch):
     repo, graph_path, data = pilot_repo
     data["nodes"] = [
         {"id": f"q{i}", "label": f"q{i}", "source_file": "a.py", "source_location": "L1"}
@@ -153,16 +153,19 @@ def test_fast_source_scores_only_cited_nodes_once_and_falls_back(pilot_repo, mon
     graph_path.write_text(json.dumps(data))
     seen = []
 
-    def score(graph, _terms, *, collect_per_term_seeds):
+    def score(graph, terms, *, collect_per_term_seeds):
         assert not collect_per_term_seeds
         seen.append((set(graph.nodes), set(graph.graph)))
-        return SimpleNamespace(ranked=[(2 - i, nid) for i, nid in enumerate(graph.nodes)])
+        ids = ["source1", "source0"] if "summary" in terms else ["source0", "source1"]
+        return SimpleNamespace(ranked=[(2 - i, nid) for i, nid in enumerate(ids)])
 
     monkeypatch.setattr("tools.jev_memory_pilot._score_query", score)
     rows = candidate_pool(graph_path, repo, "question", ["summary"],
                           source_paths=["b.py"], fast_source=True)
-    assert {row["node_id"] for row in rows} == {"source0", "source1"}
-    assert len(seen) == 1 and seen[0] == ({"source0", "source1"}, set())
+    assert [row["node_id"] for row in rows] == ["source0", "source1"]
+    assert len(seen) == 2 and all(
+        item == ({"source0", "source1"}, set()) for item in seen
+    )
 
     seen.clear()
     fallback = candidate_pool(graph_path, repo, "question", ["summary"],

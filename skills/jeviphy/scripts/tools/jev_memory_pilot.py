@@ -58,11 +58,16 @@ def candidate_pool(
         if ids:
             scoped = graph.subgraph(ids).copy()
             scoped.graph.clear()  # Rebuild IDF/trigram caches for the restricted graph.
-            terms = _query_terms(question + " " + " ".join(
-                summary[:300] for summary in memory_summaries))
-            ranked = [nid for _, nid in _score_query(
-                scoped, terms, collect_per_term_seeds=False,
-            ).ranked[:10]]
+            question_ranked = [nid for _, nid in _score_query(
+                scoped, _query_terms(question), collect_per_term_seeds=False,
+            ).ranked]
+            combined_ranked = [nid for _, nid in _score_query(
+                scoped, _query_terms(question + " " + " ".join(
+                    summary[:300] for summary in memory_summaries)),
+                collect_per_term_seeds=False,
+            ).ranked]
+            # Keep the question's strongest match from being displaced by path-heavy memory.
+            ranked = list(dict.fromkeys(question_ranked[:1] + combined_ranked))[:10]
             source_scoped = bool(ranked)
         else:
             ranked = []
