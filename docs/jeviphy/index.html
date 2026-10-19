@@ -8,8 +8,13 @@
   <meta property="og:title" content="Jeviphy — help your coding agent find the right code faster">
   <meta property="og:description" content="A Graphify fork that uses reviewed memory to point Claude Code and Codex to the right source files first.">
   <meta property="og:url" content="https://luisroquette-labs.github.io/jeviphy/">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://luisroquette-labs.github.io/jeviphy/jeviphy-og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Jeviphy turns reviewed memory into a faster path to the right source code.">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="https://luisroquette-labs.github.io/jeviphy/">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
   <title>Jeviphy — help your coding agent find the right code faster</title>
   <style>
     :root {
@@ -71,7 +76,7 @@
       letter-spacing: .03em;
     }
     .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; font-weight: 800; }
-    .brand-mark { width: 19px; aspect-ratio: 1; border: 2px solid var(--ink); transform: rotate(45deg); box-shadow: inset 5px -5px 0 var(--acid); }
+    .brand-mark { display: block; width: 32px; height: 32px; }
     nav ul { display: flex; gap: 26px; margin: 0; padding: 0; list-style: none; }
     nav a { text-decoration-thickness: 1px; text-underline-offset: 5px; }
 
@@ -271,7 +276,7 @@
   <div class="announcement"><code>jeviphy / local-first</code><span>Built on Graphify · made for Claude Code and Codex</span></div>
   <header class="shell">
     <nav aria-label="Primary navigation">
-      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"></span>Jeviphy / lab build</a>
+      <a class="brand" href="#top"><img class="brand-mark" src="logo.svg" alt="">Jeviphy / lab build</a>
       <ul>
         <li><a href="#what">What it is</a></li>
         <li><a href="#how">How it works</a></li>

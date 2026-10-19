@@ -1,5 +1,9 @@
 # Jeviphy
 
+<p align="center">
+  <a href="https://luisroquette-labs.github.io/jeviphy/"><img src="docs/logo-text.svg" width="400" alt="Jeviphy — memory-guided code search for Claude Code and Codex"/></a>
+</p>
+
 This fork is the home of [Jeviphy for Claude Code and Codex](skills/jeviphy/SKILL.md): an offline-first Graphify and Claude Mem skill with optional Jev relevance decisions. The [upstream pilot PR](https://github.com/Graphify-Labs/graphify/pull/4530) remains a separate technical feasibility proposal; no Jev quality gain is claimed.
 
 **[See the live Jeviphy evidence page](https://luisroquette-labs.github.io/jeviphy/)** for the independently confirmed local source-cited result, installation path, and measured limits.
