@@ -2,7 +2,7 @@ name: Pages
 
 on:
   push:
-    branches: ["feat/jeviphy-fast-source-retrieval-20261018"]
+    branches: ["jeviphy"]
     paths:
       - "docs/jeviphy/**"
       - ".github/workflows/pages.yml"
