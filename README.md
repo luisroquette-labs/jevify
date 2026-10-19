@@ -10,7 +10,7 @@ This fork is the home of [Jeviphy for Claude Code and Codex](skills/jeviphy/SKIL
 
 **[See the live Jeviphy evidence page](https://luisroquette-labs.github.io/jeviphy/)** for the independently confirmed local source-cited result, installation path, and measured limits.
 
-For review or presentation, use the [seven-slide technical presentation](docs/jeviphy-presentation.md), the [one-page participant brief](docs/jeviphy-participant-brief.md), and the [evidence-bounded context for AI agents](docs/jeviphy-ai-context.md).
+For review or presentation, use the [seven-slide technical presentation](docs/jeviphy-presentation.md), the [one-page participant brief](docs/jeviphy-participant-brief.md), and the [evidence-bounded context for AI agents](docs/jeviphy-ai-context.md). The [draft `@luisroquette` X agenda](docs/outreach/luisroquette-x-agenda.md) keeps later promotion gated by the evidence scorecard.
 
 ## Use Jeviphy
 
