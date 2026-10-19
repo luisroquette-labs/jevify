@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Jeviphy is a source-aware Graphify skill for Claude Code and Codex, validated on a frozen paired benchmark.">
-  <title>Jeviphy — source-aware code graph retrieval</title>
+  <meta name="description" content="Jeviphy helps Claude Code and Codex find the right code faster by combining Graphify's code graph with source paths from reviewed memory.">
+  <title>Jeviphy — help your coding agent find the right code faster</title>
   <style>
     :root {
       --ink: #0c1710;
@@ -121,6 +121,7 @@
       box-shadow: 3px 0 0 rgba(255,104,88,.7), -2px 0 0 rgba(120,238,255,.6);
     }
     .hero-copy { max-width: 650px; font-size: clamp(19px, 1.7vw, 24px); line-height: 1.35; }
+    .hero-copy strong { background: rgba(255,255,255,.7); padding: 0 .18em; }
     .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
     .button {
       display: inline-flex;
@@ -141,7 +142,7 @@
     .button.secondary { color: var(--ink); background: rgba(255,255,255,.24); }
     .button.secondary:hover { box-shadow: 6px 6px 0 var(--acid); }
 
-    .works { margin-top: 24px; font: 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+    .works { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 24px; font: 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
     .works b { margin-left: 14px; padding: 4px 7px; border: 1px solid rgba(12,23,16,.35); font-weight: 500; }
     .graph-card { position: relative; aspect-ratio: .9; overflow: hidden; }
     .graph-card::before {
@@ -168,12 +169,36 @@
     .kicker { font: 700 12px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .1em; }
     h2 { margin: 0; max-width: 850px; font: 500 clamp(40px, 5vw, 70px)/1 var(--mono); letter-spacing: -.055em; }
 
+    .plain-language { padding-top: 90px; }
+    .one-line {
+      max-width: 1020px;
+      margin: 0 0 54px;
+      font-size: clamp(27px, 3.5vw, 48px);
+      line-height: 1.12;
+      letter-spacing: -.035em;
+    }
+    .one-line mark { padding: 0 .12em; background: var(--acid); color: var(--ink); }
+    .comparison { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--ink); }
+    .comparison article { min-height: 330px; padding: 34px; display: flex; flex-direction: column; justify-content: space-between; }
+    .comparison article:first-child { border-right: 1px solid var(--ink); background: #fff; }
+    .comparison article:last-child { background: var(--acid); }
+    .comparison-tag { font: 700 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+    .comparison h3 { max-width: 480px; margin: 50px 0 16px; font-size: clamp(32px, 4vw, 52px); line-height: .98; letter-spacing: -.045em; }
+    .comparison p { max-width: 520px; margin: 0; color: var(--muted); font-size: 18px; }
+    .comparison article:last-child p { color: #24452f; }
+
     .steps { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--ink); }
     .step { min-height: 290px; padding: 28px; border-right: 1px solid var(--ink); display: flex; flex-direction: column; justify-content: space-between; }
     .step:last-child { border-right: 0; }
     .step-num { font: 12px/1 var(--mono); }
     .step h3 { margin: 0 0 10px; font-size: 30px; line-height: 1; }
     .step p { margin: 0; color: var(--muted); }
+
+    .reasons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .reason { min-height: 260px; padding: 28px; border: 1px solid var(--ink); background: rgba(255,255,255,.62); }
+    .reason strong { display: block; margin-bottom: 62px; color: var(--orange); font: 700 13px/1 var(--mono); }
+    .reason h3 { margin: 0 0 12px; font-size: 28px; line-height: 1.05; }
+    .reason p { margin: 0; color: var(--muted); }
 
     .benchmark { background: #0b1810; color: var(--paper); }
     .benchmark .section-head { border-bottom: 1px solid rgba(242,237,223,.25); padding-bottom: 50px; }
@@ -207,10 +232,11 @@
       nav ul { display: none; }
       .hero { grid-template-columns: 1fr; min-height: 0; padding-top: 70px; }
       .graph-card { max-height: 520px; }
-      .proof-grid, .steps { grid-template-columns: 1fr; }
+      .proof-grid, .steps, .reasons { grid-template-columns: 1fr; }
       .stat, .step { border-right: 0; border-bottom: 1px solid var(--ink); }
       .stat:last-child, .step:last-child { border-bottom: 0; }
-      .section-head, .install-grid, .honesty { grid-template-columns: 1fr; }
+      .section-head, .install-grid, .honesty, .comparison { grid-template-columns: 1fr; }
+      .comparison article:first-child { border-right: 0; border-bottom: 1px solid var(--ink); }
       .honesty > div:first-child { border-right: 0; border-bottom: 1px solid var(--ink); }
       .metric { grid-template-columns: 1fr 64px; }
       .metric > span:first-child { grid-column: 1 / -1; }
@@ -236,11 +262,12 @@
   </style>
 </head>
 <body>
-  <div class="announcement"><code>jeviphy / evidence build</code><span>Independent source-cited gate passed · paid Jev gate failed</span></div>
+  <div class="announcement"><code>jeviphy / local-first</code><span>Built on Graphify · made for Claude Code and Codex</span></div>
   <header class="shell">
     <nav aria-label="Primary navigation">
       <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"></span>Jeviphy / lab build</a>
       <ul>
+        <li><a href="#what">What it is</a></li>
         <li><a href="#how">How it works</a></li>
         <li><a href="#proof">Evidence</a></li>
         <li><a href="#install">Install</a></li>
@@ -251,14 +278,14 @@
   <main id="top">
     <div class="shell hero">
       <div>
-        <span class="eyebrow">Graphify × source memory</span>
-        <h1><span>The source-aware</span><span>memory layer</span><span>for your code graph.</span></h1>
-        <p class="hero-copy">Jeviphy is a Claude Code and Codex skill that narrows a Graphify code graph with reviewed source paths. On a frozen independent test, it returned more exact targets with lower latency.</p>
+        <span class="eyebrow">Memory-guided code search</span>
+        <h1><span>Find the right code.</span><span>Faster.</span></h1>
+        <p class="hero-copy"><strong>Jeviphy helps Claude Code and Codex stop searching your whole repository.</strong> It uses files already cited in reviewed memory to focus Graphify's code map before your agent answers.</p>
         <div class="actions">
-          <a class="button" href="https://github.com/luisroquette-labs/jeviphy">Get Jeviphy ↗</a>
-          <a class="button secondary" href="../jeviphy-independent-complete-workflow-20261018.md">Read the evidence</a>
+          <a class="button" href="#install">Install Jeviphy — free</a>
+          <a class="button secondary" href="#what">See how it works</a>
         </div>
-        <div class="works">Works with <b>Claude Code</b><b>Codex</b></div>
+        <div class="works">Local-first <b>No paid model required</b><b>Graphify-powered</b></div>
       </div>
       <div class="graph-card" aria-label="Abstract source graph connecting cited files to code nodes">
         <svg viewBox="0 0 400 500" role="img" aria-hidden="true">
@@ -269,9 +296,24 @@
             <circle cx="62" cy="70" r="8"/><circle cx="185" cy="130" r="14"/><circle cx="320" cy="78" r="7"/><circle cx="118" cy="244" r="11"/><circle cx="285" cy="242" r="9"/><circle cx="70" cy="375" r="7"/><circle cx="210" cy="347" r="16"/><circle cx="345" cy="390" r="8"/><circle cx="152" cy="450" r="7"/>
           </g>
         </svg>
-        <div class="graph-label"><span>cited source</span><span>exact node</span></div>
+        <div class="graph-label"><span>reviewed memory</span><span>right code</span></div>
       </div>
     </div>
+
+    <section class="shell plain-language" id="what">
+      <span class="kicker">Jeviphy in plain English</span>
+      <p class="one-line">Graphify maps your code. Jeviphy uses what your team already learned to tell your agent <mark>where to look first.</mark></p>
+      <div class="comparison">
+        <article>
+          <span class="comparison-tag">Without Jeviphy</span>
+          <div><h3>Your agent searches the whole map.</h3><p>It can inspect many plausible files before reaching the code connected to a past decision.</p></div>
+        </article>
+        <article>
+          <span class="comparison-tag">With Jeviphy</span>
+          <div><h3>Memory points to the right neighborhood.</h3><p>Jeviphy checks those cited files first, keeps the question's best match, and gives the agent a smaller, stronger starting point.</p></div>
+        </article>
+      </div>
+    </section>
 
     <div class="proof" id="proof">
       <div class="shell proof-grid">
@@ -284,18 +326,27 @@
     <section class="shell" id="how">
       <div class="section-head">
         <span class="kicker">The workflow</span>
-        <h2>Keep the graph. Add provenance.</h2>
+        <h2>Three steps. No new database.</h2>
       </div>
       <div class="steps">
-        <article class="step"><span class="step-num">01 / Map</span><div><h3>Graphify builds the graph.</h3><p>AST extraction stays local and deterministic. Jeviphy checks that the graph and repository commit match.</p></div></article>
-        <article class="step"><span class="step-num">02 / Cite</span><div><h3>Memory names the source.</h3><p>A reviewed Claude Mem observation can cite the implementation files behind a previous decision.</p></div></article>
-        <article class="step"><span class="step-num">03 / Query</span><div><h3>Jeviphy narrows the search.</h3><p>The question's strongest match is preserved while cited files focus the remaining candidates.</p></div></article>
+        <article class="step"><span class="step-num">01 / Map</span><div><h3>Graphify maps your repository.</h3><p>Your code becomes a local graph of files, functions, calls, and relationships.</p></div></article>
+        <article class="step"><span class="step-num">02 / Remember</span><div><h3>Reviewed memory cites the files.</h3><p>Past work records which source files were involved in a decision or fix.</p></div></article>
+        <article class="step"><span class="step-num">03 / Focus</span><div><h3>Jeviphy searches those files first.</h3><p>Claude Code or Codex starts closer to the answer while Graphify remains the engine underneath.</p></div></article>
+      </div>
+    </section>
+
+    <section class="shell">
+      <div class="section-head"><span class="kicker">Why install it</span><h2>Spend less agent time finding context.</h2></div>
+      <div class="reasons">
+        <article class="reason"><strong>01</strong><h3>Reach the relevant code sooner.</h3><p>Source-backed searches were faster in 198 of 200 paired runs in the independent test.</p></article>
+        <article class="reason"><strong>02</strong><h3>Put more exact targets near the top.</h3><p>Jeviphy found 11 exact targets in the top five, compared with 2 for the unscoped Graphify workflow.</p></article>
+        <article class="reason"><strong>03</strong><h3>Keep the fast path local.</h3><p>The validated mode needs no paid model call. Your graph and selected memory corpus stay on your machine.</p></article>
       </div>
     </section>
 
     <section class="benchmark">
       <div class="shell">
-        <div class="section-head"><span class="kicker">Frozen Click cohort</span><h2>Measured against the same graph, machine, and questions.</h2></div>
+        <div class="section-head"><span class="kicker">The proof</span><h2>Same graph. Same questions. Jeviphy found more and finished sooner.</h2></div>
         <div class="rows" aria-label="Benchmark comparison">
           <div class="metric"><span>Overall p95 · Graphify</span><div class="track"><div class="bar" style="width:94%"></div></div><span class="metric-value">275.69 ms</span></div>
           <div class="metric"><span>Overall p95 · Jeviphy</span><div class="track"><div class="bar jeviphy" style="width:72%"></div></div><span class="metric-value">212.95 ms</span></div>
@@ -308,7 +359,7 @@
     </section>
 
     <section class="shell">
-      <div class="section-head"><span class="kicker">Evidence policy</span><h2>The failed experiment stays on the page.</h2></div>
+      <div class="section-head"><span class="kicker">No hidden fine print</span><h2>What worked—and what did not.</h2></div>
       <div class="honesty">
         <div><h3>Local source scope passed.</h3><p>Jeviphy improved exact top-five retrieval, answer inclusion, p50, and p95 on the independent Click cohort with zero source retrieval losses.</p></div>
         <div><h3>Paid Jev did not.</h3><p>In a separate 19-call pilot, Jev left top-five hits unchanged at 4/19 and added network latency. It remains optional, off by default, and outside every speed claim here.</p></div>
@@ -319,8 +370,8 @@
       <div class="install-grid">
         <div>
           <span class="kicker">Claude Code + Codex</span>
-          <h2>Run the local path first.</h2>
-          <p>Clone the project, copy the skill for your agent, then ask Jeviphy a question in a repository with a current Graphify graph.</p>
+          <h2>Install it in two commands.</h2>
+          <p>Clone Jeviphy, copy the skill into your agent, and ask a question inside a repository with a current Graphify graph.</p>
           <p class="small">No paid model is required for <span class="mono">fast-source</span>. Keep private memory corpora outside Git.</p>
         </div>
         <pre aria-label="Installation commands"><code><span class="prompt">$</span> git clone https://github.com/luisroquette-labs/jeviphy.git
