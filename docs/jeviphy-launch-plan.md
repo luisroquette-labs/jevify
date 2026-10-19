@@ -38,7 +38,7 @@ The existing 18 October posts stay published. Do not repeat those mentions. From
 ### Graphify
 
 1. Add one concise update to [upstream draft PR #4530](https://github.com/Graphify-Labs/graphify/pull/4530) with the independent Click result, the public demo, and one decision request: should bounded source-cited seeds become an upstream query interface or remain a Jeviphy adapter?
-2. Wait 48 hours. If no maintainer responds, post once in the official Graphify Discord and link directly to the PR. Ask for architectural review rather than promotion.
+2. Wait for the maintainer response in PR #4530. Keep every Graphify follow-up in that PR so the technical context stays in one place.
 3. If Graphify wants the boundary upstream, reduce the proposal to one concern, align its title and tests with `CONTRIBUTING.md`, and keep the Jeviphy product layer outside that PR.
 
 ### Claude Mem
@@ -62,12 +62,11 @@ The campaign does not depend on an open Codex session:
 
 ## Fourteen-day cadence
 
-Allow only one outbound Jeviphy touch every 48 hours across GitHub, Discord, X, and both profiles. A substantive reply replaces the next scheduled post; answer the person before continuing the sequence.
+Allow only one outbound Jeviphy touch every 48 hours across GitHub and both X profiles. A substantive reply replaces the next scheduled post; answer the person before continuing the sequence.
 
 | Date and time (America/Sao_Paulo) | Destination | Action | Success signal |
 | --- | --- | --- | --- |
 | 20 Oct, 10:30 | Graphify PR #4530 | Post the independent evidence and interface question | Maintainer answers the architecture question |
-| 22 Oct, 13:30 | Graphify Discord, only without a PR reply | Ask for review and link the PR | Qualified contributor or maintainer joins the PR |
 | 24 Oct, 11:00 | Claude Mem GitHub Discussions | Publish the `source_paths` interoperability proposal | Maintainer critiques or accepts the contract |
 | 26 Oct, 10:30 | `@Claude_Memory`, only without a Discussion reply | Send one link to the technical Discussion | Reply or referral to the right contributor |
 | 28 Oct, 13:30 | `@luisroquette` | Publish the 60-second demo in Portuguese | Demo runs and repository visits |
