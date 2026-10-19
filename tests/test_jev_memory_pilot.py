@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from tools.jev_memory_pilot import (
     evaluate,
     load_case,
     main,
+    query_unscoped_graphify,
     query_with_decisions,
     read_sidecar,
     write_private_sidecar,
@@ -137,6 +139,146 @@ def test_source_backed_memory_candidates_keep_question_eight(pilot_repo, monkeyp
     for path in ("../b.py", "/b.py", "b\\.py", "", 42):
         with pytest.raises(ValueError, match="source paths"):
             candidate_pool(graph_path, repo, "question", ["summary"], source_paths=[path])
+
+
+def test_fast_source_reserves_question_winner_inside_cited_nodes(pilot_repo, monkeypatch):
+    repo, graph_path, data = pilot_repo
+    data["nodes"] = [
+        {"id": f"q{i}", "label": f"q{i}", "source_file": "a.py", "source_location": "L1"}
+        for i in range(10)
+    ] + [
+        {"id": f"source{i}", "label": f"source{i}", "source_file": "b.py",
+         "source_location": "L1"} for i in range(2)
+    ]
+    graph_path.write_text(json.dumps(data))
+    seen = []
+
+    def score(graph, terms, *, collect_per_term_seeds):
+        assert not collect_per_term_seeds
+        seen.append((set(graph.nodes), set(graph.graph)))
+        ids = ["source1", "source0"] if "summary" in terms else ["source0", "source1"]
+        return SimpleNamespace(ranked=[(2 - i, nid) for i, nid in enumerate(ids)])
+
+    monkeypatch.setattr("tools.jev_memory_pilot._score_query", score)
+    rows = candidate_pool(graph_path, repo, "question", ["summary"],
+                          source_paths=["b.py"], fast_source=True)
+    assert [row["node_id"] for row in rows] == ["source0", "source1"]
+    assert len(seen) == 2 and all(
+        item == ({"source0", "source1"}, set()) for item in seen
+    )
+
+    seen.clear()
+    fallback = candidate_pool(graph_path, repo, "question", ["summary"],
+                              source_paths=["missing.py"], fast_source=True)
+    assert fallback == []
+    assert seen == []
+
+    (repo / "b.py").write_text("def edited(): pass\n")
+    with pytest.raises(ValueError, match="uncommitted edits"):
+        candidate_pool(graph_path, repo, "question", ["summary"],
+                       source_paths=["b.py"], fast_source=True)
+
+
+def test_fast_source_uses_seeded_graphify_and_invalid_decisions_fall_back(pilot_repo):
+    repo, graph_path, _ = pilot_repo
+    candidates = candidate_pool(graph_path, repo, "same_label", ["same_label"],
+                                source_paths=["b.py"], fast_source=True)
+    case = {"id": "q1", "question": "same_label", "observations": []}
+    output = query_with_decisions(
+        graph_path, repo, case, candidates, {}, eligible_node_ids=set(),
+        threshold=.8, candidate_mode="fast-source",
+    )
+    assert "Start (given):" in output
+    expected_seeded = subprocess.check_output(
+        [sys.executable, "-m", "graphify", "query", "same_label", "--graph", str(graph_path),
+         "--seed", candidates[0]["node_id"]], text=True,
+    )
+    assert output == expected_seeded
+    sidecar = read_sidecar(graph_path.parent / "jev-memory-decisions.json", graph_path,
+                           subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                                   cwd=repo, text=True).strip())
+    assert sidecar["selected_nodes"] == [candidates[0]["node_id"]]
+
+    confirmed = query_with_decisions(
+        graph_path, repo,
+        {"id": "q1", "question": "same_label", "observations": [
+            {"id": "o1", "source_ref": "synthetic-o1", "summary": "same_label"},
+        ]},
+        candidates,
+        {(candidates[0]["node_id"], "o1"): {"choice": "relevant", "probability": .95}},
+        eligible_node_ids={candidates[0]["node_id"]}, threshold=.8,
+        candidate_mode="fast-source", allow_source_seeds=False,
+    )
+    assert "Start (given):" in confirmed
+
+    rejected = query_with_decisions(
+        graph_path, repo,
+        {"id": "q1", "question": "same_label", "observations": [
+            {"id": "o1", "source_ref": "synthetic-o1", "summary": "same_label"},
+        ]},
+        candidates,
+        {(candidates[0]["node_id"], "o1"): {"choice": "unrelated", "probability": .95}},
+        eligible_node_ids={candidates[0]["node_id"]}, threshold=.8,
+        candidate_mode="fast-source", allow_source_seeds=False,
+    )
+    assert "Start (given):" not in rejected
+
+    invalid = query_with_decisions(
+        graph_path, repo, case, candidates,
+        {(candidates[0]["node_id"], "missing"): {"choice": "relevant", "probability": 1}},
+        eligible_node_ids=set(), threshold=.8, candidate_mode="fast-source",
+    )
+    assert "Start (given):" not in invalid
+
+    attempted = query_with_decisions(
+        graph_path, repo, case, candidates, {}, eligible_node_ids=set(),
+        threshold=.8, candidate_mode="fast-source", allow_source_seeds=False,
+    )
+    assert "Start (given):" not in attempted
+
+    empty = candidate_pool(graph_path, repo, "same_label", ["summary"],
+                           source_paths=[], fast_source=True)
+    assert empty == []
+    fallback = query_with_decisions(
+        graph_path, repo, case, empty, {}, eligible_node_ids=set(),
+        threshold=.8, candidate_mode="fast-source",
+    )
+    expected_unseeded = subprocess.check_output(
+        [sys.executable, "-m", "graphify", "query", "same_label", "--graph", str(graph_path)],
+        text=True,
+    )
+    assert fallback == expected_unseeded
+
+
+def test_fast_source_without_cited_files_delegates_before_graph_load(
+    pilot_repo, tmp_path, monkeypatch, capsys,
+):
+    repo, graph_path, _ = pilot_repo
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(json.dumps({
+        "observations": [{"id": "o1", "project": "demo", "date": "2026-10-17",
+                          "summary": "Synthetic note.", "source_ref": "synthetic-o1"}],
+        "cases": [{"id": "q1", "question": "same_label", "relevant_node_ids": [],
+                   "relevant_pairs": [], "observation_ids": ["o1"]}],
+    }))
+    expected = subprocess.check_output(
+        [sys.executable, "-m", "graphify", "query", "same_label", "--graph", str(graph_path)],
+        text=True,
+    )
+    def unexpected_load(_path):
+        raise AssertionError("Jeviphy must not load the graph for an unscoped query")
+    monkeypatch.setattr("tools.jev_memory_pilot._read_graph", unexpected_load)
+    assert main(["--repo", str(repo), "--graph", str(graph_path), "--corpus", str(corpus),
+                 "--case-id", "q1", "--project", "demo", "--candidate-mode", "fast-source"]) == 0
+    assert capsys.readouterr().out == expected
+    assert not (graph_path.parent / "jev-memory-decisions.json").exists()
+
+
+def test_unscoped_graphify_accepts_its_no_match_exit_code(pilot_repo):
+    _, graph_path, _ = pilot_repo
+    assert query_unscoped_graphify(graph_path, "unfindable-symbol-987654") == (
+        "No matching nodes found.\n"
+    )
 
 
 def test_load_case_checks_full_graph_not_candidate_pool(tmp_path):

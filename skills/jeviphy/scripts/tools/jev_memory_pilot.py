@@ -15,7 +15,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from graphify.serve import _query_terms, _read_graph, _score_query
+from graphify.serve import _query_graph_text, _query_terms, _read_graph, _score_query
 
 
 def _head(repo: Path) -> str:
@@ -36,15 +36,13 @@ def _valid_source_paths(paths: object) -> bool:
 def candidate_pool(
     graph_path: Path, repo: Path, question: str,
     memory_summaries: list[str] | None = None,
-    *, source_paths: list[str] | None = None,
+    *, source_paths: list[str] | None = None, fast_source: bool = False,
+    graph=None,
 ) -> list[dict]:
     """Return up to ten Graphify-ranked nodes from a graph pinned to repo HEAD."""
-    graph = _read_graph(str(graph_path))
+    graph = graph if graph is not None else _read_graph(str(graph_path))
     if graph.graph.get("_built_at_commit") != _head(repo):
         raise ValueError("graph commit differs from source HEAD; rebuild the graph")
-    ranked = [nid for _, nid in _score_query(
-        graph, _query_terms(question), collect_per_term_seeds=False,
-    ).ranked[:10]]
     if source_paths is not None and not _valid_source_paths(source_paths):
         raise ValueError("expected up to 30 repo-relative source paths")
     if memory_summaries:
@@ -52,6 +50,34 @@ def candidate_pool(
                 or any(not isinstance(summary, str) or not summary.strip()
                        for summary in memory_summaries)):
             raise ValueError("expected up to three nonempty memory summaries")
+    source_scoped = False
+    if fast_source and memory_summaries and source_paths:
+        cited_files = set(source_paths)
+        ids = [nid for nid, data in graph.nodes(data=True)
+               if data.get("source_file") in cited_files]
+        if ids:
+            scoped = graph.subgraph(ids).copy()
+            scoped.graph.clear()  # Rebuild IDF/trigram caches for the restricted graph.
+            question_ranked = [nid for _, nid in _score_query(
+                scoped, _query_terms(question), collect_per_term_seeds=False,
+            ).ranked]
+            combined_ranked = [nid for _, nid in _score_query(
+                scoped, _query_terms(question + " " + " ".join(
+                    summary[:300] for summary in memory_summaries)),
+                collect_per_term_seeds=False,
+            ).ranked]
+            # Keep the question's strongest match from being displaced by path-heavy memory.
+            ranked = list(dict.fromkeys(question_ranked[:1] + combined_ranked))[:10]
+            source_scoped = bool(ranked)
+        else:
+            ranked = []
+    else:
+        ranked = []
+    if not ranked and not fast_source:
+        ranked = [nid for _, nid in _score_query(
+            graph, _query_terms(question), collect_per_term_seeds=False,
+        ).ranked[:10]]
+    if memory_summaries and not fast_source:
         memory_ranked = [nid for _, nid in _score_query(
             graph, _query_terms(" ".join(summary[:300] for summary in memory_summaries)),
             collect_per_term_seeds=False,
@@ -87,12 +113,13 @@ def candidate_pool(
             "source_file": graph.nodes[nid].get("source_file", ""),
             "source_location": graph.nodes[nid].get("source_location", ""),
             "baseline_rank": rank,
+            **({"source_scoped": source_scoped} if fast_source else {}),
         }
         for rank, nid in enumerate(ranked, 1)
     ]
 
 
-def load_case(path: Path, case_id: str, graph_node_ids: set[str], project: str) -> dict:
+def load_case(path: Path, case_id: str, graph_node_ids: set[str] | None, project: str) -> dict:
     """Select one labeled case and its observations from a local corpus."""
     corpus = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(corpus, dict):
@@ -118,7 +145,7 @@ def load_case(path: Path, case_id: str, graph_node_ids: set[str], project: str) 
     selected = case.get("observation_ids")
     if not isinstance(gold, list) or not all(isinstance(nid, str) for nid in gold):
         raise ValueError("relevant node IDs are missing")
-    if len(set(gold)) != len(gold) or set(gold) - graph_node_ids:
+    if len(set(gold)) != len(gold) or (graph_node_ids is not None and set(gold) - graph_node_ids):
         raise ValueError("unknown node or duplicate gold node")
     if (not isinstance(selected, list) or len(selected) > 3
             or any(not isinstance(obs_id, str) for obs_id in selected)
@@ -280,28 +307,41 @@ def save_private_payload(repo: Path, case_id: str, payload: dict) -> Path:
 def query_with_decisions(
     graph_path: Path, repo: Path, case: dict, candidates: list[dict],
     answers: dict[tuple[str, str], dict], *, eligible_node_ids: set[str], threshold: float,
-    model_id: str | None = None, candidate_mode: str = "question",
+    model_id: str | None = None, candidate_mode: str = "question", graph=None,
+    allow_source_seeds: bool = True,
 ) -> str:
-    """Call the original Graphify query, with seeds only when its top three change."""
+    """Run Graphify with validated source seeds or promoted decision seeds."""
     observations = case["observations"]
     valid = bool(answers) and _answers_valid(candidates, observations, answers, eligible_node_ids)
-    if not answers:
-        print("Jev unavailable; using unseeded Graphify query", file=sys.stderr)
-    elif not valid:
-        print("Invalid or incomplete decisions; using unseeded Graphify query", file=sys.stderr)
     normalized = answers if valid else {}
     ordered, suggestions = apply_decisions(
         candidates, observations, normalized, eligible_node_ids=eligible_node_ids,
         threshold=threshold,
     )
+    source_seeded = (
+        candidate_mode == "fast-source" and bool(candidates)
+        and all(item.get("source_scoped") for item in candidates[:3])
+        and ((allow_source_seeds and not answers) or (valid and bool(suggestions)))
+    )
+    if not answers and not source_seeded:
+        print("Jev unavailable; using unseeded Graphify query", file=sys.stderr)
+    elif answers and not valid:
+        print("Invalid or incomplete decisions; using unseeded Graphify query", file=sys.stderr)
     assisted = [item["node_id"] for item in ordered[:3]] != [item["node_id"] for item in candidates[:3]]
-    selected = [item["node_id"] for item in ordered[:3]] if assisted else []
+    selected = [item["node_id"] for item in ordered[:3]] if assisted or source_seeded else []
     args = [sys.executable, "-m", "graphify", "query", case["question"],
             "--graph", str(graph_path)]
     if assisted:
         args.extend(part for node_id in selected for part in ("--seed", node_id))
     env = {**os.environ, "GRAPHIFY_QUERY_LOG_DISABLE": "1"}
-    answer_text = subprocess.run(args, check=True, capture_output=True, text=True, env=env).stdout
+    if candidate_mode == "fast-source":
+        graph = graph if graph is not None else _read_graph(str(graph_path))
+        answer_text = _query_graph_text(
+            graph, case["question"], depth=2, graph_path=str(graph_path.resolve()),
+            seeds=selected or None,
+        ) + "\n"
+    else:
+        answer_text = subprocess.run(args, check=True, capture_output=True, text=True, env=env).stdout
     by_node = {item["node_id"]: item for item in candidates}
     by_obs = {item["id"]: item for item in observations}
     for suggestion in suggestions:
@@ -333,6 +373,19 @@ def query_with_decisions(
     }
     write_private_sidecar(graph_path.parent / "jev-memory-decisions.json", metadata)
     return answer_text
+
+
+def query_unscoped_graphify(graph_path: Path, question: str) -> str:
+    """Use Graphify directly when no memory source can participate in retrieval."""
+    result = subprocess.run(
+        [sys.executable, "-m", "graphify", "query", question, "--graph", str(graph_path)],
+        capture_output=True, text=True,
+        env={**os.environ, "GRAPHIFY_QUERY_LOG_DISABLE": "1", "PYTHONHASHSEED": "0"},
+    )
+    if result.returncode == 4 and result.stdout == "No matching nodes found.\n" and not result.stderr:
+        return result.stdout
+    result.check_returncode()
+    return result.stdout
 
 
 def precision_at_k(ranked: list[str], relevant: set[str], k: int = 5) -> float:
@@ -454,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--corpus", type=Path, required=True)
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--project", required=True)
-    parser.add_argument("--candidate-mode", choices=("question", "memory"),
+    parser.add_argument("--candidate-mode", choices=("question", "memory", "fast-source"),
                         default="question", help="Experimental memory candidate pool")
     parser.add_argument("--threshold", type=float, default=0.8)
     parser.add_argument("--decisions", type=Path, help="Local offline decision JSON")
@@ -470,16 +523,26 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--print-synthetic-payload requires --dry-run")
     if args.live:
         validate_private_corpus(args.corpus)
+    if args.candidate_mode == "fast-source" and not (args.live or args.dry_run or args.decisions):
+        unscoped_case = load_case(args.corpus, args.case_id, None, args.project)
+        if not any(obs.get("source_paths") for obs in unscoped_case["observations"]):
+            print(query_unscoped_graphify(args.graph, unscoped_case["question"]), end="")
+            return 0
     graph = _read_graph(str(args.graph))
     case = load_case(args.corpus, args.case_id, set(graph.nodes), args.project)
+    source_paths = list(dict.fromkeys(
+        path for item in case["observations"] for path in item.get("source_paths", [])
+    )) if args.candidate_mode != "question" else None
     candidates = candidate_pool(
         args.graph, args.repo, case["question"],
         [item["summary"] for item in case["observations"]]
-        if args.candidate_mode == "memory" else None,
-        source_paths=list(dict.fromkeys(
-            path for item in case["observations"] for path in item.get("source_paths", [])
-        )) if args.candidate_mode == "memory" else None,
+        if args.candidate_mode != "question" else None,
+        source_paths=source_paths,
+        fast_source=args.candidate_mode == "fast-source",
+        graph=graph,
     )
+    if args.live and args.candidate_mode == "fast-source" and not candidates:
+        parser.error("fast-source requires scored nodes in trusted cited files for live use")
     answers = load_decisions(args.decisions) if args.decisions else {}
     eligible_node_ids = {item["node_id"] for item in candidates if item["source_file"]}
     model_id = None
@@ -515,7 +578,8 @@ def main(argv: list[str] | None = None) -> int:
     print(query_with_decisions(args.graph, args.repo, case, candidates, answers,
                                eligible_node_ids=eligible_node_ids,
                                threshold=args.threshold, model_id=model_id,
-                               candidate_mode=args.candidate_mode), end="")
+                               candidate_mode=args.candidate_mode, graph=graph,
+                               allow_source_seeds=not (args.live or args.decisions)), end="")
     return 0
 
 

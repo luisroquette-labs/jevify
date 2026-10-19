@@ -20,9 +20,10 @@ Use Graphify's existing graph and query engine. Treat memory links as suggestion
    ```
 
 4. For an offline relevance experiment, add `--decisions /private/path/decisions.json`. To test the bounded memory-aware candidate pool, add `--candidate-mode memory`. With reviewed `source_paths` on an observation, it keeps the question's first eight nodes and fills up to two slots with memory-scored nodes in those files. Without a scored node in those files, it uses the earlier seven-question/three-memory rule. The default `question` mode remains the comparison arm. For a local request preview, add `--dry-run`. Review its private payload before any external transmission.
+   `--candidate-mode fast-source` is an optional offline experiment: it scores only nodes in cited source files, using the question and bounded memory summary in one pass, then uses the best three as Graphify traversal seeds. It can return fewer than ten nodes. Without cited paths and without a payload/decision request, it delegates directly to Graphify; unscored cited files and invalid Jev decisions use the unseeded answer path. Its three-repository stress result supports a conditional speed and precision gain for synthetic source-cited cases, not a general p95 or Jev-model gain; see `docs/jeviphy-fast-source-stress-20261018.md`.
 5. Run `--live --approved-paid-use --max-requests 1` only after the user explicitly approves this paid API call and the exact class of code/memory content to send. Supply a project-scoped `JEV_MEMORY_PILOT_API_KEY` manually. Never auto-use a personal token or retry an uncertain call.
 
-The runner caps work at ten nodes, three observations, thirty decisions, and a 24 KiB request. Missing or malformed decisions fall back to the unseeded Graphify query, including in memory candidate mode. Query runs write `graphify-out/jev-memory-decisions.json`; dry runs save a private payload outside Git. Neither mode alters the structural graph.
+The runner caps work at ten nodes, three observations, thirty decisions, and a 24 KiB request. Missing or malformed decisions fall back to the unseeded Graphify query, including in memory candidate mode. Memory-aware query runs write `graphify-out/jev-memory-decisions.json`; no-source pass-through does not. Dry runs save a private payload outside Git. Neither mode alters the structural graph.
 
 ## Evaluate
 
