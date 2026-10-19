@@ -17,6 +17,14 @@ class SourceEvidence:
     reason: str
 
 
+def _is_test_path(path: str) -> bool:
+    lowered = path.casefold()
+    return any(marker in lowered for marker in (
+        "test/", "tests/", "spec/", "/test/", "/tests/", "/spec/",
+        "_test.", ".test.", "-test.",
+    ))
+
+
 def classify_source_evidence(
     repo: Path,
     graph: nx.Graph,
@@ -27,6 +35,8 @@ def classify_source_evidence(
     unique_paths = tuple(dict.fromkeys(paths))
     if not source_commit:
         return SourceEvidence((), unique_paths, "source_commit_missing")
+    if unique_paths and all(_is_test_path(path) for path in unique_paths):
+        return SourceEvidence((), unique_paths, "test_only_paths_need_unscoped_query")
     if subprocess.run(
         ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"],
         cwd=repo,

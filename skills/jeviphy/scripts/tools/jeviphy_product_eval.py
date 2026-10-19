@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
-from graphify.serve import _read_graph
+from graphify.serve import _query_terms, _read_graph, _score_query
 from tools.jev_memory_pilot import candidate_pool
 from tools.jeviphy_eval_contract import EvalCase
 from tools.jeviphy_provenance import classify_source_evidence
@@ -69,6 +69,19 @@ def command_sha256(argv: Sequence[str]) -> str:
 
 
 def current_pins(manifest: Path, graphify_commit: str, repo: Path, argv: Sequence[str]) -> RunPins:
+    if subprocess.check_output(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=repo, text=True
+    ).strip():
+        raise ValueError("Jeviphy checkout must be clean before a benchmark run")
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", graphify_commit, "HEAD"], cwd=repo
+    ).returncode != 0:
+        raise ValueError("Graphify commit is not an ancestor of the Jeviphy checkout")
+    if subprocess.run(
+        ["git", "diff", "--quiet", graphify_commit, "--", "graphify", "pyproject.toml", "uv.lock"],
+        cwd=repo,
+    ).returncode != 0:
+        raise ValueError("Graphify engine differs from the pinned commit")
     jeviphy_commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=repo, text=True
     ).strip()
@@ -209,6 +222,23 @@ def _cited_candidates(graph, paths: Sequence[str]) -> list[dict]:
     ]
 
 
+def _baseline_candidates(graph, question: str) -> list[dict]:
+    ranked = _score_query(
+        graph, _query_terms(question), collect_per_term_seeds=False
+    ).ranked[:10]
+    return [
+        {
+            "node_id": node_id,
+            "label": graph.nodes[node_id].get("label", node_id),
+            "type": graph.nodes[node_id].get("type", ""),
+            "source_file": graph.nodes[node_id].get("source_file", ""),
+            "source_location": graph.nodes[node_id].get("source_location", ""),
+            "baseline_rank": rank,
+        }
+        for rank, (_, node_id) in enumerate(ranked, 1)
+    ]
+
+
 def run_retrieval_pair(
     case: EvalCase,
     graph_path: Path,
@@ -223,9 +253,8 @@ def run_retrieval_pair(
     records: dict[str, ArmRecord] = {}
     for arm in order:
         started = time.perf_counter_ns()
-        baseline = candidate_pool(graph_path, repo, case.question, graph=graph)
         if arm == "graphify" or not case.memory.source_paths:
-            candidates = baseline
+            candidates = _baseline_candidates(graph, case.question)
         else:
             evidence = classify_source_evidence(
                 repo, graph, case.memory.source_commit, case.memory.source_paths
@@ -243,7 +272,7 @@ def run_retrieval_pair(
                 if not candidates:
                     candidates = _cited_candidates(graph, evidence.usable_paths)
             else:
-                candidates = baseline
+                candidates = _baseline_candidates(graph, case.question)
         results[arm] = candidates
         records[arm] = _candidate_record(arm, started, candidates, case.gold_files)
     after = file_sha256(graph_path)

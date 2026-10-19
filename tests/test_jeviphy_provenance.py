@@ -74,3 +74,15 @@ def test_non_ancestor_commit_is_rejected(tmp_path):
     evidence = classify_source_evidence(repo, graph, "f" * 40, ["stable.py"])
     assert evidence.reason == "source_commit_not_ancestor"
     assert evidence.usable_paths == ()
+
+
+def test_test_only_evidence_uses_unscoped_query(tmp_path):
+    repo, _, second, graph = provenance_repo(tmp_path)
+    (repo / "tests").mkdir()
+    (repo / "tests/stable_test.py").write_text("def test_stable(): pass\n")
+    commit(repo, "test")
+    graph.add_node("test", source_file="tests/stable_test.py")
+    evidence = classify_source_evidence(repo, graph, second, ["tests/stable_test.py"])
+    assert evidence.usable_paths == ()
+    assert evidence.rejected_paths == ("tests/stable_test.py",)
+    assert evidence.reason == "test_only_paths_need_unscoped_query"
