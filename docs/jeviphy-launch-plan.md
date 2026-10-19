@@ -31,27 +31,45 @@ Paid Jev stays optional and off by default. Its 19-call pilot did not improve to
 
 The v2.1 X API returned `402 credits depleted`, so the approved record was published through the authenticated X web UI and reconciled with the resulting tweet ID. The v3.1 queue accepted its approved item but did not persist a publication ID during the verification window; that item was also published through X web and reconciled with its real tweet ID. Neither fallback used a paid generation API.
 
+## Maintainer-first outreach
+
+The existing 18 October posts stay published. Do not repeat those mentions. From here, use one evidence-backed request per destination and move the technical conversation to the channel each project already uses.
+
+### Graphify
+
+1. Add one concise update to [upstream draft PR #4530](https://github.com/Graphify-Labs/graphify/pull/4530) with the independent Click result, the public demo, and one decision request: should bounded source-cited seeds become an upstream query interface or remain a Jeviphy adapter?
+2. Wait 48 hours. If no maintainer responds, post once in the official Graphify Discord and link directly to the PR. Ask for architectural review rather than promotion.
+3. If Graphify wants the boundary upstream, reduce the proposal to one concern, align its title and tests with `CONTRIBUTING.md`, and keep the Jeviphy product layer outside that PR.
+
+### Claude Mem
+
+1. Open one GitHub Discussion in **Show and tell** or **Ideas**, not an issue: demonstrate the offline workflow and propose an optional `source_paths` interoperability contract.
+2. Ask three concrete questions: whether observations can expose stable source paths, how stale or renamed paths should be represented, and what must be redacted before export.
+3. Wait 48 hours, then send one short X reply or DM to `@Claude_Memory` linking to the Discussion. Mention their earlier repost and ask for technical critique. Do not open a code PR until the contract is accepted.
+
+### Outreach packet
+
+Every contact uses the same compact structure: the problem in one sentence, the independently measured result in one sentence, one decision request, and no more than three links. Use the public page for orientation, the reproducible report for evidence, and the relevant PR or Discussion for the conversation. Never present Jeviphy as endorsed by Graphify or Claude Mem, and never attribute the measured gain to paid Jev.
+
 ## Fourteen-day cadence
 
-No more than one Jeviphy publication per calendar day across both profiles. Keep at least 48 hours between planned posts, review the previous post's response before releasing the next one, and pause the sequence when a technical reply deserves an answer.
+Allow only one outbound Jeviphy touch every 48 hours across GitHub, Discord, X, and both profiles. A substantive reply replaces the next scheduled post; answer the person before continuing the sequence.
 
-| Date and time (America/Sao_Paulo) | Profile | Publication | Success signal |
+| Date and time (America/Sao_Paulo) | Destination | Action | Success signal |
 | --- | --- | --- | --- |
-| 20 Oct, 10:30 | `@luisroquette` | 60-second offline demo in Portuguese | Repository visits and demo runs |
-| 22 Oct, 13:30 | `@thedoomguy_ai` | Moritz Kremb evaluation request | Reply or independent review |
-| 24 Oct, 11:00 | `@thedoomguy_ai` | Failed paid-Jev result and what changed | Typed-question design suggestions |
-| 26 Oct, 10:30 | `@thedoomguy_ai` | Claude Memory source-path interoperability request | Technical critique or test |
-| 28 Oct, 13:30 | `@thedoomguy_ai` | Graphify method thread and upstream review request | Qualified upstream discussion |
-| 30 Oct, 10:30 | `@thedoomguy_ai` | TypeSafe request for a better bounded Jev design | Jev design feedback |
-| 2 Nov, 13:30 | `@luisroquette` | Public scorecard and next experiment | Reproduction, review, or counterexample |
-
-The four outreach messages in the launch record were mistakenly published together on 18 October instead of being scheduled on this cadence. Their deletion and rescheduling must preserve the correction record and the original resulting URLs.
+| 20 Oct, 10:30 | Graphify PR #4530 | Post the independent evidence and interface question | Maintainer answers the architecture question |
+| 22 Oct, 13:30 | Graphify Discord, only without a PR reply | Ask for review and link the PR | Qualified contributor or maintainer joins the PR |
+| 24 Oct, 11:00 | Claude Mem GitHub Discussions | Publish the `source_paths` interoperability proposal | Maintainer critiques or accepts the contract |
+| 26 Oct, 10:30 | `@Claude_Memory`, only without a Discussion reply | Send one link to the technical Discussion | Reply or referral to the right contributor |
+| 28 Oct, 13:30 | `@luisroquette` | Publish the 60-second demo in Portuguese | Demo runs and repository visits |
+| 30 Oct, 10:30 | `@thedoomguy_ai` | Explain the independent result and failed paid-Jev test | Reproduction or counterexample |
+| 2 Nov, 13:30 | Both audiences through one scorecard post | Report replies, runs, limitations, and next experiment | Independent reproduction or agreed integration step |
 
 ## Measurement and decisions
 
-Track page visits, repository visitors, clones, stars, demo completions, technical replies, independent reproductions, and accepted upstream changes. Record the source post for each referral so the two profiles and each outreach message can be compared.
+Track page visits, repository visitors, clones, stars, demo completions, technical replies, independent reproductions, and accepted upstream changes. Record the source post for each referral so the two profiles and each outreach message can be compared. A maintainer decision, independent reproduction, or concrete integration experiment outranks reach and impressions.
 
-Continue the campaign after day 14 only if it produces at least one independent reproduction, substantive technical review, or qualified upstream discussion. Revise the page if an external run contradicts the current cohort result. Do not promote paid Jev as the cause of the measured speed or retrieval gain unless a new frozen experiment demonstrates it.
+Continue the campaign after day 14 only if it produces at least one independent reproduction, substantive technical review, or qualified upstream discussion. If none occurs, publish the scorecard and pause outreach instead of increasing frequency. Revise the page if an external run contradicts the current cohort result. Do not promote paid Jev as the cause of the measured speed or retrieval gain unless a new frozen experiment demonstrates it.
 
 ## Reusable assets
 
