@@ -20,6 +20,17 @@ When the user supplies a question, use it directly. Question generation and base
 
 ## Workflow
 
+Install the skill for both supported hosts with:
+
+```bash
+python scripts/install_jeviphy_skill.py install --host both
+```
+
+Run `python skills/jeviphy/scripts/run.py doctor --repo PATH --graph PATH --corpus PATH`
+before the first query. It checks the repository, graph commit, private corpus permissions, and
+returns a single JSON diagnostic. `query` accepts the existing pilot arguments; `benchmark`
+runs five or more paired offline retrieval passes for one frozen v2 case.
+
 1. Locate the target Git repository and its `graphify-out/graph.json`. Confirm the graph's `built_at_commit` equals `git rev-parse HEAD`; use the [graph commands](references/graph.md) to build or refresh it offline when absent or stale.
 2. Retrieve only the user's selected project observations through the supported Claude Mem bridge or another approved export. Keep the corpus outside Git, with mode `0700` on its directory and `0600` on files. Never read the Claude Mem database directly. Use the [memory workflow](references/memory.md) and [corpus schema](references/corpus.md).
 3. Run the baseline query before any Jev decision. Example:

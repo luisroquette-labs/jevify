@@ -6,7 +6,93 @@
 # ///
 """Portable Jeviphy entry point for Claude Code and Codex skill installs."""
 
-from tools.jev_memory_pilot import main
+import argparse
+import json
+import os
+import subprocess
+import sys
+from dataclasses import asdict
+from pathlib import Path
+
+from graphify.serve import _read_graph
+from tools.jev_memory_pilot import main as query_main
+from tools.jeviphy_eval_contract import load_manifest
+from tools.jeviphy_product_eval import balanced_order, run_retrieval_pair
+
+
+def head(repo: Path) -> str:
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+
+def doctor(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="jeviphy doctor")
+    parser.add_argument("--repo", type=Path, required=True)
+    parser.add_argument("--graph", type=Path, required=True)
+    parser.add_argument("--corpus", type=Path, required=True)
+    args = parser.parse_args(argv)
+    checks = {
+        "repo": args.repo.is_dir(),
+        "graph": args.graph.is_file(),
+        "corpus": args.corpus.is_file(),
+        "corpus_private": args.corpus.is_file() and args.corpus.stat().st_mode & 0o077 == 0,
+    }
+    if checks["repo"] and checks["graph"]:
+        checks["graph_current"] = _read_graph(str(args.graph)).graph.get("_built_at_commit") == head(
+            args.repo
+        )
+    else:
+        checks["graph_current"] = False
+    print(json.dumps({"ok": all(checks.values()), "checks": checks}, sort_keys=True))
+    return 0 if all(checks.values()) else 1
+
+
+def benchmark(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="jeviphy benchmark")
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--case-id", required=True)
+    parser.add_argument("--repo", type=Path, required=True)
+    parser.add_argument("--graph", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--passes", type=int, default=5)
+    args = parser.parse_args(argv)
+    if args.passes < 5:
+        parser.error("at least five measured passes are required")
+    manifest = load_manifest(args.manifest)
+    case = next((item for item in manifest.cases if item.id == args.case_id), None)
+    if case is None:
+        parser.error("case ID not found")
+    if head(args.repo) != case.base_commit:
+        parser.error("repository HEAD differs from case base_commit")
+    run_retrieval_pair(
+        case, args.graph, args.repo, pass_index=-1, order=("graphify", "jeviphy")
+    )
+    records = []
+    for pass_index in range(args.passes):
+        pair, _ = run_retrieval_pair(
+            case,
+            args.graph,
+            args.repo,
+            pass_index=pass_index,
+            order=balanced_order(0, pass_index),
+        )
+        records.append(asdict(pair))
+    if args.output.exists():
+        parser.error("output already exists")
+    descriptor = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump({"case_id": case.id, "records": records}, stream, sort_keys=True)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "doctor":
+        return doctor(arguments[1:])
+    if arguments and arguments[0] == "query":
+        return query_main(arguments[1:])
+    if arguments and arguments[0] == "benchmark":
+        return benchmark(arguments[1:])
+    return query_main(arguments)
 
 if __name__ == "__main__":
     raise SystemExit(main())
