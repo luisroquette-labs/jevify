@@ -10,6 +10,8 @@ This fork is the home of [Jeviphy for Claude Code and Codex](skills/jeviphy/SKIL
 
 **[See the live Jeviphy evidence page](https://luisroquette-labs.github.io/jeviphy/)** for the independently confirmed local source-cited result, installation path, and measured limits.
 
+For review or presentation, use the [seven-slide technical presentation](docs/jeviphy-presentation.md), the [one-page participant brief](docs/jeviphy-participant-brief.md), and the [evidence-bounded context for AI agents](docs/jeviphy-ai-context.md).
+
 ## Use Jeviphy
 
 Jeviphy uses Graphify to build and query a code graph. It adds selected Claude Mem observations and can optionally use Jev to rank links between those observations and graph nodes. The Graphify engine remains a dependency; Jev calls are off by default.
