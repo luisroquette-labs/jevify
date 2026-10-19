@@ -6,6 +6,8 @@
 
 This fork is the home of [Jeviphy for Claude Code and Codex](skills/jeviphy/SKILL.md): an offline-first Graphify and Claude Mem skill with optional Jev relevance decisions. The [upstream pilot PR](https://github.com/Graphify-Labs/graphify/pull/4530) remains a separate technical feasibility proposal; no Jev quality gain is claimed.
 
+> **Current Jev requirement:** offline Graphify and Jeviphy features need no provider account. Using Jev live currently requires each user to have their own OpenRouter account, supply their own project-scoped API key as `JEV_MEMORY_PILOT_API_KEY`, and pay for their own requests. Jeviphy does not currently provide hosted Jev access, a shared key, or an OAuth sign-in flow.
+
 **[See the live Jeviphy evidence page](https://luisroquette-labs.github.io/jeviphy/)** for the independently confirmed local source-cited result, installation path, and measured limits.
 
 ## Use Jeviphy
