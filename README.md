@@ -2,6 +2,8 @@
 
 This fork is the home of [Jeviphy for Claude Code and Codex](skills/jeviphy/SKILL.md): an offline-first Graphify and Claude Mem skill with optional Jev relevance decisions. The [upstream pilot PR](https://github.com/Graphify-Labs/graphify/pull/4530) remains a separate technical feasibility proposal; no Jev quality gain is claimed.
 
+**[See the Jeviphy evidence page](docs/jeviphy/index.html)** for the independently confirmed local source-cited result, installation path, and measured limits.
+
 ## Use Jeviphy
 
 Jeviphy uses Graphify to build and query a code graph. It adds selected Claude Mem observations and can optionally use Jev to rank links between those observations and graph nodes. The Graphify engine remains a dependency; Jev calls are off by default.
@@ -11,9 +13,9 @@ Jeviphy uses Graphify to build and query a code graph. It adds selected Claude M
 3. The skill checks that `graphify-out/graph.json` matches the repository HEAD, builds it offline if needed, and runs the original Graphify query as the baseline. The [runner](skills/jeviphy/scripts/run.py) accepts a selected corpus outside Git for an offline comparison.
 
 Add `--candidate-mode memory` to the runner for experimental memory candidates. Reviewed observation `source_paths` can guide two of the ten slots toward cited implementation files; without them, the earlier 7-question/3-memory rule applies. It changes candidate selection only; without valid decisions, the answer still uses the original Graphify query. See the [evaluation record](docs/jev-memory-pilot-evaluation.md) for the measured limits and the [five-stage roadmap](docs/jeviphy-roadmap.md) for the planned comparison and sales page.
-For an offline speed and relevance experiment, `--candidate-mode fast-source` scores only nodes from cited files in one pass and uses the best three as Graphify traversal seeds. Without cited files, it delegates directly to Graphify. A [three-repository stress report](docs/jeviphy-fast-source-stress-20261018.md) supports faster, more precise **source-cited** local retrieval on synthetic cases; it does not establish a general p95 or Jev-model advantage. The mode is opt-in.
+For an offline speed and relevance experiment, `--candidate-mode fast-source` scores only nodes from cited files in one pass and uses the best three as Graphify traversal seeds. Without cited files, it delegates directly to Graphify. A [three-repository development report](docs/jeviphy-fast-source-stress-20261018.md) and an [independent frozen Click comparison](docs/jeviphy-independent-complete-workflow-20261018.md) support faster, more precise **source-cited** local retrieval on synthetic cases. They do not establish a general performance or Jev-model advantage. The mode is opt-in.
 
-The pilot currently has synthetic tests and a [documented evaluation protocol](docs/jev-memory-pilot-evaluation.md). It has no measured gain on real memory. A paid Jev request requires a separate review of the exact private payload and explicit approval; never put memory corpora or payloads in a commit or PR. The code and skill are available under this repository's existing [Apache-2.0 license](LICENSE), subject to the licenses of any separate services used with it.
+The pilot currently has synthetic tests and a [documented evaluation protocol](docs/jev-memory-pilot-evaluation.md). It has no measured gain on real memory. A 19-call paid Jev pilot did not improve top-five retrieval and added network latency, so Jev stays optional and outside the performance claim. Never put memory corpora or payloads in a commit or PR. The code and skill are available under this repository's existing [Apache-2.0 license](LICENSE), subject to the licenses of any separate services used with it.
 
 Run the [one-command offline demo](docs/jeviphy-demo.md) to see a synthetic memory link change a Graphify result without an API key.
 

@@ -1,6 +1,6 @@
 ---
 title: Independently validate the local source-cited Jeviphy workflow
-status: draft
+status: passed
 ---
 
 # Stage 4: independent complete-workflow comparison
@@ -33,3 +33,11 @@ Stage 4 passes only if all conditions hold on this first frozen run:
 5. At least 190/200 source-backed paired runs are faster, limiting success from a few extreme outliers.
 
 Passing supports only local source-cited retrieval on synthetic code-review cases. It does not prove paid Jev benefit, real Claude Mem benefit, or end-to-end agent productivity.
+
+## Result
+
+The first frozen Graphify-repository cohort improved every speed and answer metric, but failed the zero-loss retrieval gate: 32/40 source gold nodes reached the top five versus 9/40 for Graphify, with one loss. That cohort became development data. The correction reserves one source-scoped slot for the question-only winner so path-heavy memory cannot displace it.
+
+The next frozen cohort used the untouched Click repository at `2247b35e`, with 40 source cases across 15 modules and 20 no-source controls. It passed every declared gate on its first candidate run: 11/40 versus 2/40 source top-five hits, zero source losses, 32/40 versus 22/40 first-pass answer hits, 198/200 faster source pairs, and byte-identical controls. Overall p50/p95 were 79.63/212.95 ms versus 183.92/275.69 ms. Source p50/p95 were 65.37/158.29 ms versus 189.02/294.29 ms. The pooled p95 advantage interval was 23.51–119.46 ms and the source interval was 75.09–218.64 ms.
+
+The result validates the narrow local source-cited claim on synthetic code-review questions. It does not validate paid Jev, Claude Mem lookup time, real-user productivity, or all repositories.
