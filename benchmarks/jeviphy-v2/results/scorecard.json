@@ -1,0 +1,43 @@
+{
+  "allowed_claim": "Jeviphy improved source-backed retrieval on the frozen v2 benchmark.",
+  "gates": {
+    "compatibility": {
+      "metrics": {
+        "graphify_compatible": null
+      },
+      "status": "insufficient_evidence"
+    },
+    "product": {
+      "metrics": {},
+      "status": "insufficient_evidence"
+    },
+    "reproduction": {
+      "metrics": {
+        "independent_receipts": 0,
+        "operating_systems": []
+      },
+      "status": "insufficient_evidence"
+    },
+    "retrieval": {
+      "metrics": {
+        "baseline_first_hits": 4,
+        "baseline_precision_at_5": 0.04,
+        "controls_byte_identical": true,
+        "jeviphy_first_hits": 40,
+        "jeviphy_precision_at_5": 0.24500000000000002,
+        "p50_time_ratio": 0.15385577818813762,
+        "p95_time_ratio": 0.04087552273272422,
+        "precision_difference_ci95": [
+          0.165,
+          0.255
+        ],
+        "stale_losses": 0
+      },
+      "status": "pass"
+    },
+    "usability": {
+      "metrics": {},
+      "status": "insufficient_evidence"
+    }
+  }
+}

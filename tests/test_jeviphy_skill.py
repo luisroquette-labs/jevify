@@ -1,10 +1,14 @@
 """The installed skill entry point must work outside this checkout's cwd."""
 
 import re
+import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import networkx as nx
+from networkx.readwrite import json_graph
 
 
 def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
@@ -37,3 +41,36 @@ def test_portable_skill_code_matches_project_code() -> None:
             cwd=root, check=True, capture_output=True,
         ).stdout
         assert source == committed
+
+
+def test_portable_doctor_reports_current_private_inputs(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "app.py").write_text("value = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+         "commit", "-qm", "fixture"],
+        cwd=repo,
+        check=True,
+    )
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    graph = nx.Graph()
+    graph.add_node("app", source_file="app.py")
+    data = json_graph.node_link_data(graph, edges="links")
+    data["built_at_commit"] = head
+    graph_path = repo / "graph.json"
+    graph_path.write_text(json.dumps(data), encoding="utf-8")
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text("{}", encoding="utf-8")
+    corpus.chmod(0o600)
+    result = subprocess.run(
+        [sys.executable, str(root / "skills/jeviphy/scripts/run.py"), "doctor",
+         "--repo", str(repo), "--graph", str(graph_path), "--corpus", str(corpus)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(result.stdout)["ok"] is True
