@@ -328,9 +328,9 @@
 
     <div class="proof" id="proof">
       <div class="shell proof-grid">
-        <div class="stat"><strong>46%</strong><span>lower source-backed p95<br>158 ms vs 294 ms</span></div>
-        <div class="stat"><strong>11:2</strong><span>exact source targets<br>in the top five</span></div>
-        <div class="stat"><strong>198/200</strong><span>source-backed pairs<br>completed faster</span></div>
+        <div class="stat"><strong>24.5%</strong><span>Jeviphy precision@5<br>vs 4.0% Graphify</span></div>
+        <div class="stat"><strong>40:4</strong><span>first gold-file hits<br>across 40 source cases</span></div>
+        <div class="stat"><strong>600</strong><span>paired measurements<br>across 120 real tasks</span></div>
       </div>
     </div>
 
@@ -349,30 +349,30 @@
     <section class="shell">
       <div class="section-head"><span class="kicker">Why install it</span><h2>Spend less agent time finding context.</h2></div>
       <div class="reasons">
-        <article class="reason"><strong>01</strong><h3>Reach the relevant code sooner.</h3><p>Source-backed searches were faster in 198 of 200 paired runs in the independent test.</p></article>
-        <article class="reason"><strong>02</strong><h3>Put more exact targets near the top.</h3><p>Jeviphy found 11 exact targets in the top five, compared with 2 for the unscoped Graphify workflow.</p></article>
+        <article class="reason"><strong>01</strong><h3>Reach the relevant code sooner.</h3><p>Median source-backed retrieval was 51.98 ms for Jeviphy and 337.85 ms for Graphify in v2.</p></article>
+        <article class="reason"><strong>02</strong><h3>Put more exact targets near the top.</h3><p>Jeviphy reached 24.5% precision@5, compared with 4.0% for the same Graphify engine and frozen questions.</p></article>
         <article class="reason"><strong>03</strong><h3>Keep the fast path local.</h3><p>The validated mode needs no paid model call. Your graph and selected memory corpus stay on your machine.</p></article>
       </div>
     </section>
 
     <section class="benchmark">
       <div class="shell">
-        <div class="section-head"><span class="kicker">The proof</span><h2>Same graph. Same questions. Jeviphy found more and finished sooner.</h2></div>
+        <div class="section-head"><span class="kicker">The proof</span><h2>Jeviphy improved source-backed retrieval on the frozen v2 benchmark.</h2></div>
         <div class="rows" aria-label="Benchmark comparison">
-          <div class="metric"><span>Overall p95 · Graphify</span><div class="track"><div class="bar" style="width:94%"></div></div><span class="metric-value">275.69 ms</span></div>
-          <div class="metric"><span>Overall p95 · Jeviphy</span><div class="track"><div class="bar jeviphy" style="width:72%"></div></div><span class="metric-value">212.95 ms</span></div>
-          <div class="metric"><span>Source p95 · Graphify</span><div class="track"><div class="bar" style="width:100%"></div></div><span class="metric-value">294.29 ms</span></div>
-          <div class="metric"><span>Source p95 · Jeviphy</span><div class="track"><div class="bar jeviphy" style="width:54%"></div></div><span class="metric-value">158.29 ms</span></div>
+          <div class="metric"><span>Precision@5 · Graphify</span><div class="track"><div class="bar" style="width:16%"></div></div><span class="metric-value">4.0%</span></div>
+          <div class="metric"><span>Precision@5 · Jeviphy</span><div class="track"><div class="bar jeviphy" style="width:98%"></div></div><span class="metric-value">24.5%</span></div>
+          <div class="metric"><span>Source p95 · Graphify</span><div class="track"><div class="bar" style="width:100%"></div></div><span class="metric-value">4,170.41 ms</span></div>
+          <div class="metric"><span>Source p95 · Jeviphy</span><div class="track"><div class="bar jeviphy" style="width:4%"></div></div><span class="metric-value">170.47 ms</span></div>
         </div>
         <div class="legend"><span><i></i>Graphify</span><span><i class="green"></i>Jeviphy fast-source</span></div>
-        <div class="method">60 frozen synthetic questions · 40 source-cited cases · 20 byte-identical controls · 5 passes · 300 paired timings · 10,000 bootstrap resamples · Click commit <strong>2247b35e</strong> · Apple arm64 · Python 3.13.12 · <a href="../jeviphy-independent-complete-workflow-20261018.md">full method, hashes, failures, and limits →</a></div>
+        <div class="method">120 frozen public SWE-bench Multilingual tasks · 38 repositories · 9 languages · 40 source-cited cases · 20 stale cases · 40 byte-identical controls · 5 passes · 600 paired measurements · 10,000 bootstrap resamples · Python 3.13.12 · <a href="../jeviphy-v2-evaluation.md">full method, hashes, failures, and limits →</a></div>
       </div>
     </section>
 
     <section class="shell">
       <div class="section-head"><span class="kicker">No hidden fine print</span><h2>What worked—and what did not.</h2></div>
       <div class="honesty">
-        <div><h3>Local source scope passed.</h3><p>Jeviphy improved exact top-five retrieval, answer inclusion, p50, and p95 on the independent Click cohort with zero source retrieval losses.</p></div>
+        <div><h3>Frozen retrieval passed.</h3><p>Jeviphy improved precision@5 and first gold-file hits, with zero stale-source losses and byte-identical no-source controls. Product-task success and external reproduction are still unproven.</p></div>
         <div><h3>Paid Jev did not.</h3><p>In a separate 19-call pilot, Jev left top-five hits unchanged at 4/19 and added network latency. It remains optional, off by default, and outside every speed claim here.</p></div>
       </div>
     </section>
@@ -382,11 +382,11 @@
         <div>
           <span class="kicker">Claude Code + Codex</span>
           <h2>Install it in two commands.</h2>
-          <p>Clone Jeviphy, copy the skill into your agent, and ask a question inside a repository with a current Graphify graph.</p>
+          <p>Clone Jeviphy, run its receipt-based installer, and ask a question inside a repository with a current Graphify graph.</p>
           <p class="small">No paid model is required for <span class="mono">fast-source</span>. Keep private memory corpora outside Git.</p>
         </div>
         <pre aria-label="Installation commands"><code><span class="prompt">$</span> git clone https://github.com/luisroquette-labs/jeviphy.git
-<span class="prompt">$</span> cp -R jeviphy/skills/jeviphy ~/.agents/skills/
+<span class="prompt">$</span> python jeviphy/scripts/install_jeviphy_skill.py install --host both
 
 <span class="prompt"># Codex</span>
 $jeviphy investigate this repository
@@ -398,7 +398,7 @@ $jeviphy investigate this repository
   </main>
 
   <footer>
-    <div class="shell footer-grid"><span>Jeviphy is built on Graphify</span><span>Apache-2.0 · evidence dated 2026-10-18</span></div>
+    <div class="shell footer-grid"><span>Jeviphy is built on Graphify</span><span>Apache-2.0 · evidence dated 2026-10-19</span></div>
   </footer>
 </body>
 </html>

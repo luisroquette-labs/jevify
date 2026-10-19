@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Pin both arms to the same upstream Graphify SHA, graph bytes, repository commit, machine class, Python version, agent/model, context limit, and wall-clock limit.
-- Use Graphify v8 commit `86c57be8204673c2a1b9849a3292a7dd3ab373d8`, the current upstream head verified on 2026-10-19; changing this pin creates benchmark v3.
+- Use Graphify engine commit `4342e67107f77db54098d7873b563ff20830dcb8`, the exact baseline implementation pinned by the frozen manifest; changing this pin creates benchmark v3.
 - Freeze 120 tasks from at least 6 public repositories and 3 languages: 40 valid source-backed, 20 stale/misleading, 40 no-source controls, and 20 cross-file/ambiguous.
 - Keep at least 20 tasks from one repository as an unseen holdout until the candidate release is frozen.
 - Require at least +10 percentage points in task success with a positive 95% paired bootstrap lower bound; preserve no-source success within 2 percentage points.
@@ -580,7 +580,7 @@ git commit -m "feat: add Jeviphy install and doctor workflow"
 
 - [ ] **Step 1: Verify the candidate still contains the pinned Graphify SHA**
 
-Fetch `Graphify-Labs/graphify` and require `git merge-base --is-ancestor 86c57be8204673c2a1b9849a3292a7dd3ab373d8 HEAD` to exit `0`. Do not rebase after the manifest freeze. If a newer Graphify release is selected, stop v2 and create benchmark v3 with new repository graphs, manifest hashes, and baseline results.
+Require the candidate to contain Graphify engine commit `4342e67107f77db54098d7873b563ff20830dcb8` and verify that the evaluator imports the matching baseline function. Do not rebase after the manifest freeze. If a newer Graphify release is selected, stop v2 and create benchmark v3 with new repository graphs, manifest hashes, and baseline results.
 
 - [ ] **Step 2: Run the offline retrieval benchmark first**
 

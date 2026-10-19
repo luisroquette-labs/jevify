@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 
 from tools.jeviphy_product_score import (
     INTERNAL_PRODUCT_WIN,
@@ -6,6 +7,7 @@ from tools.jeviphy_product_score import (
     REPRODUCED_PRODUCT_WIN,
     RETRIEVAL_ONLY,
     allowed_claim,
+    write_scorecard,
     score_run,
 )
 
@@ -66,7 +68,12 @@ def complete_report():
     return {
         "retrieval_records": retrieval_records(),
         "product_records": product_records(),
-        "usability": {"attempts": 20, "successes": 20, "median_seconds": 120},
+        "usability": {
+            "attempts": 20,
+            "successes": 20,
+            "median_seconds": 120,
+            "operating_systems": ["macOS 15", "Ubuntu 24.04"],
+        },
         "compatibility": True,
         "reproductions": [
             {"independent": True, "os": "macOS"},
@@ -130,3 +137,23 @@ def test_control_regression_and_stale_loss_fail_closed():
 def test_missing_evidence_emits_no_difference():
     scorecard = score_run({})
     assert allowed_claim(scorecard) == NO_DIFFERENCE
+
+
+def test_usability_requires_macos_and_ubuntu():
+    report = complete_report()
+    report["usability"]["operating_systems"] = ["macOS 15"]
+    assert score_run(report).usability.status == "fail"
+
+
+def test_scorecard_writer_emits_machine_and_human_results(tmp_path):
+    report = tmp_path / "report.json"
+    output = tmp_path / "scorecard.json"
+    markdown = tmp_path / "scorecard.md"
+    report.write_text(json.dumps({"retrieval_records": retrieval_records()}), encoding="utf-8")
+
+    write_scorecard(report, output, markdown)
+
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert result["allowed_claim"] == RETRIEVAL_ONLY
+    assert result["gates"]["retrieval"]["status"] == "pass"
+    assert RETRIEVAL_ONLY in markdown.read_text(encoding="utf-8")

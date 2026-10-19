@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
+import json
 import random
 import statistics
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 
 NO_DIFFERENCE = "The frozen v2 benchmark did not demonstrate a Jeviphy advantage."
@@ -188,11 +191,16 @@ def score_run(report: dict) -> Scorecard:
         attempts = usability_data.get("attempts", 0)
         successes = usability_data.get("successes", 0)
         median_seconds = usability_data.get("median_seconds")
+        systems = {
+            str(system).casefold() for system in usability_data.get("operating_systems", [])
+        }
         passed = (
             attempts >= 20
             and successes / attempts >= 0.9
             and isinstance(median_seconds, (int, float))
             and median_seconds < 300
+            and any("macos" in system for system in systems)
+            and any("ubuntu" in system for system in systems)
         )
         usability = GateResult("pass" if passed else "fail", dict(usability_data))
     compatibility_value = report.get("compatibility")
@@ -238,3 +246,46 @@ def allowed_claim(scorecard: Scorecard) -> str:
     if scorecard.retrieval.status == "pass":
         return RETRIEVAL_ONLY
     return NO_DIFFERENCE
+
+
+def write_scorecard(report_path: Path, output_path: Path, markdown_path: Path) -> Scorecard:
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    scorecard = score_run(report)
+    claim = allowed_claim(scorecard)
+    gates = asdict(scorecard)
+    payload = {"allowed_claim": claim, "gates": gates}
+    output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    rows = [
+        f"| {name.title()} | {gate['status']} |"
+        for name, gate in gates.items()
+    ]
+    markdown_path.write_text(
+        "# Jeviphy v2 scorecard\n\n"
+        f"> {claim}\n\n"
+        "| Gate | Status |\n| --- | --- |\n"
+        + "\n".join(rows)
+        + "\n",
+        encoding="utf-8",
+    )
+    return scorecard
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("report", type=Path)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--markdown", type=Path, required=True)
+    args = parser.parse_args()
+    scorecard = write_scorecard(args.report, args.output, args.markdown)
+    gates = (
+        scorecard.retrieval,
+        scorecard.product,
+        scorecard.usability,
+        scorecard.compatibility,
+        scorecard.reproduction,
+    )
+    raise SystemExit(0 if all(gate.status == "pass" for gate in gates) else 1)
+
+
+if __name__ == "__main__":
+    main()

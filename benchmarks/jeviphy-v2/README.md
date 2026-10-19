@@ -12,6 +12,10 @@ This benchmark compares Jeviphy with the exact Graphify revision on which it is 
 
 Changing a repository, case, label, stratum, threshold, or pin creates a new benchmark version. Timed-out and failed cases stay in the denominator. Private transcripts and credentials never belong in this directory.
 
+## Published result
+
+The frozen candidate completed 600 paired measurements and passed the retrieval gate. Read the [evaluation](../../docs/jeviphy-v2-evaluation.md), inspect the [raw report](results/retrieval-report.json), or follow the [independent reproduction instructions](reproductions/README.md). Product superiority remains blocked by incomplete product-task and external reproduction evidence.
+
 Run the contract tests with:
 
 ```bash
