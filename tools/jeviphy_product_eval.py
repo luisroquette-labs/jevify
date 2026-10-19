@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
-from graphify.serve import _read_graph
+from graphify.serve import _query_terms, _read_graph, _score_query
 from tools.jev_memory_pilot import candidate_pool
 from tools.jeviphy_eval_contract import EvalCase
 from tools.jeviphy_provenance import classify_source_evidence
@@ -222,6 +222,23 @@ def _cited_candidates(graph, paths: Sequence[str]) -> list[dict]:
     ]
 
 
+def _baseline_candidates(graph, question: str) -> list[dict]:
+    ranked = _score_query(
+        graph, _query_terms(question), collect_per_term_seeds=False
+    ).ranked[:10]
+    return [
+        {
+            "node_id": node_id,
+            "label": graph.nodes[node_id].get("label", node_id),
+            "type": graph.nodes[node_id].get("type", ""),
+            "source_file": graph.nodes[node_id].get("source_file", ""),
+            "source_location": graph.nodes[node_id].get("source_location", ""),
+            "baseline_rank": rank,
+        }
+        for rank, (_, node_id) in enumerate(ranked, 1)
+    ]
+
+
 def run_retrieval_pair(
     case: EvalCase,
     graph_path: Path,
@@ -237,7 +254,7 @@ def run_retrieval_pair(
     for arm in order:
         started = time.perf_counter_ns()
         if arm == "graphify" or not case.memory.source_paths:
-            candidates = candidate_pool(graph_path, repo, case.question, graph=graph)
+            candidates = _baseline_candidates(graph, case.question)
         else:
             evidence = classify_source_evidence(
                 repo, graph, case.memory.source_commit, case.memory.source_paths
@@ -255,7 +272,7 @@ def run_retrieval_pair(
                 if not candidates:
                     candidates = _cited_candidates(graph, evidence.usable_paths)
             else:
-                candidates = candidate_pool(graph_path, repo, case.question, graph=graph)
+                candidates = _baseline_candidates(graph, case.question)
         results[arm] = candidates
         records[arm] = _candidate_record(arm, started, candidates, case.gold_files)
     after = file_sha256(graph_path)

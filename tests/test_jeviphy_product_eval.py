@@ -152,7 +152,7 @@ def test_valid_source_scopes_without_running_unscoped_query_first(tmp_path, monk
         case, graph_path, repo, pass_index=0, order=("jeviphy", "graphify")
     )
     assert [row["source_file"] for row in outputs["jeviphy"]] == ["b.py"]
-    assert calls == [True, False]
+    assert calls == [True]
 
 
 def test_stale_source_falls_back_exactly(tmp_path):
@@ -166,3 +166,24 @@ def test_stale_source_falls_back_exactly(tmp_path):
         stale, graph_path, repo, pass_index=0, order=("graphify", "jeviphy")
     )
     assert stale_outputs["graphify"] == stale_outputs["jeviphy"]
+
+
+def test_graphify_baseline_keeps_dependency_nodes_without_git_paths(tmp_path):
+    repo, graph_path, case = retrieval_fixture(tmp_path)
+    data = json.loads(graph_path.read_text())
+    data["nodes"].append({
+        "id": "external", "label": "openapi types", "type": "module",
+        "source_file": "@octokit/openapi-types",
+    })
+    graph_path.write_text(json.dumps(data))
+    dependency_case = replace(
+        case,
+        question="openapi types",
+        stratum="no_source",
+        memory=MemoryEvidence("", (), None, None),
+    )
+    record, outputs = run_retrieval_pair(
+        dependency_case, graph_path, repo, pass_index=0, order=("graphify", "jeviphy")
+    )
+    assert any(row["node_id"] == "external" for row in outputs["graphify"])
+    assert record.baseline.output_sha256 == record.jeviphy.output_sha256
