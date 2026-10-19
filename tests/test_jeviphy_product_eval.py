@@ -21,6 +21,7 @@ from tools.jeviphy_product_eval import (
     seal_journal,
     validate_live_limits,
 )
+import tools.jeviphy_product_eval as product_eval
 
 
 def arm(name="graphify", status="completed", success=True):
@@ -137,12 +138,25 @@ def test_no_source_control_is_byte_identical_and_graph_is_immutable(tmp_path):
     assert graph_path.read_bytes() == before
 
 
-def test_valid_source_scopes_and_stale_source_falls_back(tmp_path):
+def test_valid_source_scopes_without_running_unscoped_query_first(tmp_path, monkeypatch):
     repo, graph_path, case = retrieval_fixture(tmp_path)
+    original = product_eval.candidate_pool
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(kwargs.get("fast_source", False))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(product_eval, "candidate_pool", counted)
     _, outputs = run_retrieval_pair(
         case, graph_path, repo, pass_index=0, order=("jeviphy", "graphify")
     )
     assert [row["source_file"] for row in outputs["jeviphy"]] == ["b.py"]
+    assert calls == [True, False]
+
+
+def test_stale_source_falls_back_exactly(tmp_path):
+    repo, graph_path, case = retrieval_fixture(tmp_path)
     stale = replace(
         case,
         stratum="stale_source",

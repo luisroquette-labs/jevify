@@ -69,6 +69,10 @@ def command_sha256(argv: Sequence[str]) -> str:
 
 
 def current_pins(manifest: Path, graphify_commit: str, repo: Path, argv: Sequence[str]) -> RunPins:
+    if subprocess.check_output(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=repo, text=True
+    ).strip():
+        raise ValueError("Jeviphy checkout must be clean before a benchmark run")
     jeviphy_commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=repo, text=True
     ).strip()
@@ -223,9 +227,8 @@ def run_retrieval_pair(
     records: dict[str, ArmRecord] = {}
     for arm in order:
         started = time.perf_counter_ns()
-        baseline = candidate_pool(graph_path, repo, case.question, graph=graph)
         if arm == "graphify" or not case.memory.source_paths:
-            candidates = baseline
+            candidates = candidate_pool(graph_path, repo, case.question, graph=graph)
         else:
             evidence = classify_source_evidence(
                 repo, graph, case.memory.source_commit, case.memory.source_paths
@@ -243,7 +246,7 @@ def run_retrieval_pair(
                 if not candidates:
                     candidates = _cited_candidates(graph, evidence.usable_paths)
             else:
-                candidates = baseline
+                candidates = candidate_pool(graph_path, repo, case.question, graph=graph)
         results[arm] = candidates
         records[arm] = _candidate_record(arm, started, candidates, case.gold_files)
     after = file_sha256(graph_path)
