@@ -20,7 +20,7 @@ DEFAULT_STATE = Path.home() / ".local/share/jeviphy-outreach/state.json"
 TASKS = (
     {
         "id": "graphify-evidence-v1",
-        "due": "2026-10-20T10:30:00-03:00",
+        "due": "2026-10-21T10:30:00-03:00",
         "action": "graphify_comment",
     },
     {
