@@ -333,13 +333,19 @@ def evaluate_generated_arm(
     output_root: Path,
     result: ArmResult,
     timeout_seconds: int,
+    candidate_sha: str,
 ) -> ProductArmRecord:
     output = output_root / result.arm / result.instance_id
     if result.state != "completed":
         return _failed_product_record(result, output)
     prediction = output / "preds.json"
     trajectory = _trajectory_path(output, result.instance_id)
-    run_id = re.sub(r"[^A-Za-z0-9_.-]", "_", f"jeviphy-{result.arm}-{result.instance_id}")
+    if not re.fullmatch(r"[0-9a-f]{40}", candidate_sha):
+        raise ValueError("candidate SHA must be a full lowercase Git SHA")
+    run_id = re.sub(
+        r"[^A-Za-z0-9_.-]", "_",
+        f"jeviphy-{candidate_sha[:12]}-{result.arm}-{result.instance_id}",
+    )
     evaluation_root = output / "official-evaluation"
     if evaluation_root.exists():
         raise ValueError(f"official evaluator directory already exists: {evaluation_root}")
@@ -413,6 +419,7 @@ def run_batch(
     max_agent_calls: int | None = None,
     max_cost_usd: Decimal | None = None,
     max_calls_per_arm: int = 80,
+    candidate_sha: str,
 ) -> list[ProductArmRecord]:
     if max_calls_per_arm < 1:
         raise ValueError("max_calls_per_arm must be positive")
@@ -437,7 +444,9 @@ def run_batch(
             if arm_output.exists() and any(arm_output.iterdir()):
                 raise ValueError(f"unjournaled arm output already exists: {arm_output}")
             result = run_one(root, output_root, arm, instance_id, api_key, timeout_seconds)
-            record = evaluate_generated_arm(root, output_root, result, timeout_seconds)
+            record = evaluate_generated_arm(
+                root, output_root, result, timeout_seconds, candidate_sha
+            )
             _append_product_record(progress, record)
             results.append(record)
             completed_keys.add((arm, instance_id))
@@ -656,6 +665,7 @@ def main() -> int:
         max_agent_calls=args.max_agent_calls,
         max_cost_usd=Decimal(str(args.max_cost_usd)),
         max_calls_per_arm=max_calls_per_arm,
+        candidate_sha=candidate_sha,
     )
     if len(records) == required_calls:
         seal_product_journal(

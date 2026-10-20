@@ -119,12 +119,15 @@ def test_batch_stops_after_first_infrastructure_failure(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.jeviphy_product_batch.run_one", failed_arm)
     monkeypatch.setattr(
         "tools.jeviphy_product_batch.evaluate_generated_arm",
-        lambda root, output_root, result, timeout: _product_record(
+        lambda root, output_root, result, timeout, candidate_sha: _product_record(
             result.arm, result.instance_id, status="infrastructure_failed", cost="0.01"
         ),
     )
     with pytest.raises(RuntimeError, match="infrastructure failure"):
-        run_batch(tmp_path, ["case-1", "case-2"], "secret", timeout_seconds=1)
+        run_batch(
+            tmp_path, ["case-1", "case-2"], "secret", timeout_seconds=1,
+            candidate_sha="a" * 40,
+        )
 
     assert calls == [("graphify", "case-1")]
     progress = [
@@ -145,11 +148,14 @@ def test_batch_writes_to_separate_output_root(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.jeviphy_product_batch.run_one", completed_arm)
     monkeypatch.setattr(
         "tools.jeviphy_product_batch.evaluate_generated_arm",
-        lambda root, output_root, result, timeout: _product_record(
+        lambda root, output_root, result, timeout, candidate_sha: _product_record(
             result.arm, result.instance_id, cost="0.01"
         ),
     )
-    run_batch(tmp_path, ["case-1"], "secret", timeout_seconds=1, output_root=output_root)
+    run_batch(
+        tmp_path, ["case-1"], "secret", timeout_seconds=1, output_root=output_root,
+        candidate_sha="a" * 40,
+    )
 
     assert (output_root / "product-arms.jsonl").exists()
     assert not (tmp_path / "isolated").exists()
@@ -294,7 +300,7 @@ def test_two_chunks_keep_per_arm_call_limit_and_reduce_total_cost(tmp_path, monk
     monkeypatch.setattr("tools.jeviphy_product_batch.run_one", completed_arm)
     monkeypatch.setattr(
         "tools.jeviphy_product_batch.evaluate_generated_arm",
-        lambda root, output_root, result, timeout: _product_record(
+        lambda root, output_root, result, timeout, candidate_sha: _product_record(
             result.arm, result.instance_id, cost="0.02"
         ),
     )
@@ -302,10 +308,12 @@ def test_two_chunks_keep_per_arm_call_limit_and_reduce_total_cost(tmp_path, monk
     run_batch(
         tmp_path, ["case-1"], "secret", output_root=output, max_new_arms=1,
         max_agent_calls=4, max_cost_usd=Decimal("0.10"),
+        candidate_sha="a" * 40,
     )
     run_batch(
         tmp_path, ["case-1"], "secret", output_root=output, max_new_arms=1,
         max_agent_calls=4, max_cost_usd=Decimal("0.10"),
+        candidate_sha="a" * 40,
     )
 
     assert seen == [("80", "0.10"), ("80", "0.08")]
@@ -370,9 +378,21 @@ def test_completed_generation_uses_official_swebench_report(tmp_path, monkeypatc
     monkeypatch.setattr("tools.jeviphy_product_batch.subprocess.run", run)
     record = evaluate_generated_arm(
         tmp_path, tmp_path / "out",
-        ArmResult("graphify", "case-1", "completed", 0, True, 1.0), 30,
+        ArmResult("graphify", "case-1", "completed", 0, True, 1.0), 30, "a" * 40,
     )
 
     assert captured["command"][:4] == ["uvx", "--from", "swebench==5.0.2", "python"]
+    assert captured["command"][-1].startswith("jeviphy-aaaaaaaaaaaa-graphify-")
     assert record.success is True
     assert record.resolved is True
+
+
+def test_official_eval_rejects_unpinned_candidate_sha(tmp_path):
+    with pytest.raises(ValueError, match="full lowercase Git SHA"):
+        evaluate_generated_arm(
+            tmp_path,
+            tmp_path / "out",
+            ArmResult("graphify", "case-1", "completed", 0, True, 1.0),
+            30,
+            "short",
+        )
