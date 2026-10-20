@@ -1,10 +1,10 @@
 # Jeviphy Zero-Configuration Parity Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Use subagents only when the active instructions explicitly authorize delegation. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make bare `/jeviphy` complete a useful, source-verified query with no repository, question, corpus, mode, or credential prompt.
 
-**Architecture:** Add one small orchestration module at the portable runner boundary. It resolves the current Git repository and graph, selects a Graphify-generated question when needed, then routes to the existing exact Graphify fallback or existing memory-aware runner; memory and live Jev stay optional. Keep discovery and fallback in Python so Claude Code and Codex consume the same behavior instead of relying on prompt interpretation.
+**Architecture:** Add one small orchestration module at the portable runner boundary. It resolves the current Git repository, performs one bounded offline graph repair when required, selects a Graphify-generated question when needed, then routes to the existing exact Graphify fallback or existing memory-aware runner; memory and live Jev stay optional. Keep discovery and fallback in Python so Claude Code and Codex consume the same behavior instead of relying on prompt interpretation.
 
 **Tech Stack:** Python 3.10+, standard library, NetworkX, existing Graphify `suggest_questions` and query APIs, existing Jeviphy provenance/runner modules, pytest, Git, `uv`.
 
@@ -18,17 +18,17 @@
 - Corpus and live Jev are optional; their absence or failure cannot block the Graphify answer.
 - Do not add a hosted provider, OAuth flow, vector database, runtime dependency, or second application stack.
 - Do not change or combine the currently running frozen benchmark; evaluate this candidate separately.
-- Keep graphs read-only and private corpora outside Git with existing `0700`/`0600` permissions.
+- Keep queries read-only. Automatic repair may update only `graphify-out/` through Graphify; keep private corpora outside Git with existing `0700`/`0600` permissions.
 - Preserve explicit `doctor`, `query`, and `benchmark` compatibility.
 - Use one task branch and one PR to `jeviphy`; run applicable local gates only through `mac-gate`.
 
 ## Review Focus
 
-1. **Nested working directory:** resolve the containing Git root and never use a nested `graphify-out`; Task 1 pins this behavior.
-2. **Legacy graph metadata:** accept `_built_at_commit` and `built_at_commit`, reject conflicts and stale values; Task 1 covers all forms.
+1. **Nested working directory and repair:** resolve the containing Git root, never use a nested `graphify-out`, and perform at most one offline repair; Task 1 pins this behavior.
+2. **Graph metadata boundary:** require persisted `built_at_commit` and verify Graphify normalizes it to in-memory `_built_at_commit`; Task 1 covers missing, malformed, and stale values.
 3. **No useful question:** fail with one bounded diagnostic without asking the user; Task 2 covers empty and low-confidence-only graphs.
 4. **Provider failure after approval:** make one attempt, disclose only `live_enrichment=skipped`, and return exit zero with offline output; Task 4 covers HTTP, timeout, redirect, malformed response, and missing key.
-5. **Output compatibility:** keep the Graphify answer byte-identical outside the optional audit envelope; Tasks 3 and 5 compare exact bytes.
+5. **Output compatibility:** keep the Graphify answer byte-identical outside the optional audit envelope; Tasks 3 and 6 compare exact bytes.
 
 ---
 
@@ -37,10 +37,11 @@
 | Responsibility | File |
 | --- | --- |
 | SDD behavior contract | `.specs/tasks/draft/jeviphy-zero-configuration-parity.feature.md` |
-| Auto context, question, and result envelope | `tools/jeviphy_autorun.py` |
+| Auto context, bounded repair, question, and result envelope | `tools/jeviphy_autorun.py` |
 | Portable copy of orchestration | `skills/jeviphy/scripts/tools/jeviphy_autorun.py` |
 | CLI routing and compatible flags | `skills/jeviphy/scripts/run.py` |
-| Existing exact Graphify fallback | `tools/jev_memory_pilot.py` |
+| Structured pilot core and exact Graphify fallback | `tools/jev_memory_pilot.py` |
+| Bounded Jev request adapter | `tools/jev_memory_pilot_api.py` |
 | Installed host instructions | `skills/jeviphy/SKILL.md` |
 | Auto-path unit tests | `tests/test_jeviphy_autorun.py` |
 | Portable CLI and doctor tests | `tests/test_jeviphy_skill.py` |
@@ -49,7 +50,7 @@
 | Usability harness tests | `tests/test_jeviphy_zero_config_eval.py` |
 | Public result report | `docs/jeviphy-zero-configuration-evaluation.md` |
 
-### Task 1: Resolve Repository and Graph Without Parameters
+### Task 1: Resolve and Repair the Graph Without Parameters
 
 **Files:**
 - Create: `tools/jeviphy_autorun.py`
@@ -59,23 +60,23 @@
 
 **Interfaces:**
 - Consumes: `cwd: Path`, optional explicit repository and graph paths.
-- Produces: `InvocationContext(repo: Path, graph: Path, head: str)` and `resolve_context(cwd: Path, repo: Path | None = None, graph: Path | None = None) -> InvocationContext`.
+- Produces: `InvocationContext(repo: Path, graph: Path, head: str)`, pure `inspect_context(...) -> ContextState`, and bounded `ensure_context(...) -> InvocationContext`.
 
 - [ ] **Step 1: Write failing repository-discovery tests**
 
 ```python
-def test_resolve_context_uses_containing_git_root(repo_with_graph, monkeypatch):
+def test_ensure_context_uses_containing_git_root(repo_with_graph, monkeypatch):
     repo, graph = repo_with_graph
     nested = repo / "src" / "nested"
     nested.mkdir(parents=True)
-    context = resolve_context(nested)
+    context = ensure_context(nested)
     assert context.repo == repo.resolve()
     assert context.graph == graph.resolve()
 
 
-def test_resolve_context_rejects_outside_git(tmp_path):
+def test_ensure_context_rejects_outside_git(tmp_path):
     with pytest.raises(ContextError, match="not inside a Git worktree"):
-        resolve_context(tmp_path)
+        ensure_context(tmp_path)
 ```
 
 Add cases for an explicit repository, an explicit graph, and paths containing spaces.
@@ -116,29 +117,43 @@ def git_root(cwd: Path) -> Path:
     return Path(result.stdout.strip()).resolve()
 ```
 
-`resolve_context` uses the explicit repository when supplied, otherwise `git_root(cwd)`. Its default graph is `repo / "graphify-out/graph.json"`. It reads `HEAD`, loads the graph only through `_read_graph`, and returns a specific missing or stale diagnostic. If both metadata fields exist and disagree, treat the graph as stale.
+`inspect_context` uses the explicit repository when supplied, otherwise `git_root(cwd)`. Its default graph is `repo / "graphify-out/graph.json"`. It reads `HEAD`, loads the graph only through `_read_graph`, and returns a specific missing or stale diagnostic. Read the raw JSON only to validate the persisted top-level `built_at_commit`, then load through `_read_graph` and compare its normalized `_built_at_commit` with `HEAD`. Missing, blank, non-string, or mismatched values are stale.
 
 - [ ] **Step 4: Add graph-state tests**
 
 Test these exact states:
 
 ```python
-@pytest.mark.parametrize("metadata_key", ["_built_at_commit", "built_at_commit"])
-def test_current_graph_metadata_is_accepted(repo_with_graph, metadata_key): ...
+def test_persisted_commit_is_normalized_and_accepted(repo_with_graph): ...
 
+@pytest.mark.parametrize("value", [None, "", 42])
+def test_missing_or_malformed_persisted_commit_is_stale(repo_with_graph, value): ...
 
-def test_conflicting_graph_commit_fields_are_rejected(repo_with_graph): ...
+def test_stale_graph_runs_one_offline_update_then_revalidates(repo_with_stale_graph): ...
 
-def test_missing_graph_names_extract_command(repo_without_graph): ...
+def test_corrupt_graph_runs_one_code_only_extract_then_revalidates(repo_with_corrupt_graph): ...
 
-def test_stale_graph_names_update_command(repo_with_stale_graph): ...
+def test_missing_graph_runs_one_code_only_extract_then_revalidates(repo_without_graph): ...
+
+def test_failed_repair_does_not_retry(repo_without_graph): ...
 ```
 
-The repair command must quote the absolute repository path with `shlex.join` and must never execute during context resolution.
+Keep inspection pure. `ensure_context` may execute one argument-array child process with cwd set to the repository:
+
+- missing: `[sys.executable, "-m", "graphify", "extract", ".", "--code-only"]`;
+- corrupt: `[sys.executable, "-m", "graphify", "extract", ".", "--force", "--code-only"]`;
+- stale: `[sys.executable, "-m", "graphify", "update", "."]`.
+
+Copy the current environment, set `GRAPHIFY_NO_AUTO_REFRESH=1` and `PYTHONHASHSEED=0`, then remove `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `JEV_MEMORY_PILOT_API_KEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`, `OLLAMA_API_KEY`, `GRAPHIFY_API_KEY`, and AWS credential variables. Test the removal with sentinel values. Reinspect after the child exits. Never retry, use a shell, or accept an invalid repaired graph.
 
 - [ ] **Step 5: Keep the portable module byte-equivalent**
 
-Copy `tools/jeviphy_autorun.py` to `skills/jeviphy/scripts/tools/jeviphy_autorun.py` and extend `test_portable_skill_code_matches_project_code` to compare both files byte for byte.
+Copy `tools/jeviphy_autorun.py` to `skills/jeviphy/scripts/tools/jeviphy_autorun.py`. Split the existing combined assertion into two tests:
+
+- `test_portable_skill_code_matches_project_code` compares current project and portable bytes, including `jeviphy_autorun.py` immediately;
+- `test_pinned_commit_matches_portable_core` compares only files that exist in the currently pinned commit.
+
+Do not require the old pin to contain the newly created module.
 
 - [ ] **Step 6: Run focused tests and commit**
 
@@ -163,13 +178,13 @@ git commit -m "feat: resolve Jeviphy context automatically"
 
 **Interfaces:**
 - Consumes: `graph: nx.Graph`, optional `question: str | None`.
-- Produces: `select_question(graph: nx.Graph, question: str | None) -> str`.
+- Produces: `select_question(graph: nx.Graph, graph_path: Path, question: str | None) -> str`.
 
 - [ ] **Step 1: Write failing precedence and selection tests**
 
 ```python
 def test_explicit_question_wins(sample_graph):
-    assert select_question(sample_graph, " What calls createClient? ") == (
+    assert select_question(sample_graph, graph_path, " What calls createClient? ") == (
         "What calls createClient?"
     )
 
@@ -180,7 +195,7 @@ def test_first_high_confidence_suggestion_wins(monkeypatch, sample_graph):
         {"question": "selected", "low_confidence": False},
         {"question": "later", "low_confidence": False},
     ])
-    assert select_question(sample_graph, None) == "selected"
+    assert select_question(sample_graph, graph_path, None) == "selected"
 ```
 
 Also test whitespace-only explicit input, low-confidence-only suggestions, a `no_signal` record, and an empty graph.
@@ -194,7 +209,7 @@ Expected: FAIL because `select_question` is missing.
 - [ ] **Step 3: Implement deterministic selection with existing Graphify APIs**
 
 ```python
-def select_question(graph: nx.Graph, question: str | None) -> str:
+def select_question(graph: nx.Graph, graph_path: Path, question: str | None) -> str:
     if question is not None and question.strip():
         return question.strip()
     communities = _communities_from_graph(graph)
@@ -224,63 +239,63 @@ git add tools/jeviphy_autorun.py skills/jeviphy/scripts/tools/jeviphy_autorun.py
 git commit -m "feat: select Jeviphy questions automatically"
 ```
 
-### Task 3: Add the Bare Auto Command and Optional Corpus
+### Task 3: Add One Structured Query Core and the Bare Auto Command
 
 **Files:**
-- Modify: `skills/jeviphy/scripts/run.py`
+- Modify: `tools/jev_memory_pilot.py`
+- Modify: `tools/jev_memory_pilot_api.py`
+- Modify: `skills/jeviphy/scripts/tools/jev_memory_pilot.py`
+- Modify: `skills/jeviphy/scripts/tools/jev_memory_pilot_api.py`
 - Modify: `tools/jeviphy_autorun.py`
 - Modify: `skills/jeviphy/scripts/tools/jeviphy_autorun.py`
-- Modify: `tests/test_jeviphy_skill.py`
+- Modify: `skills/jeviphy/scripts/run.py`
+- Modify: `tests/test_jev_memory_pilot.py`
 - Modify: `tests/test_jeviphy_autorun.py`
+- Modify: `tests/test_jeviphy_skill.py`
 
 **Interfaces:**
-- Consumes: `auto(argv: Sequence[str], cwd: Path) -> int`, optional `--question`, `--repo`, `--graph`, `--corpus`, `--case-id`, `--project`, and `--json`.
-- Produces: `AutoResult(schema_version, mode, repo, graph, question, live_enrichment, answer)` and process exit status.
+- `run_pilot(config: PilotConfig) -> PilotOutcome` returns answer, model, cost, whether trusted memory changed the traversal seeds, and normalized live-enrichment status; the legacy `main()` only parses, calls it, and prints.
+- `auto(argv: Sequence[str], cwd: Path) -> int` accepts optional `--question`, `--repo`, `--graph`, `--corpus`, `--json`, and the existing bounded live flags.
+- `AutoResult(schema_version, mode, repo, graph, question, live_enrichment, answer)` is the only auto JSON envelope.
 
-- [ ] **Step 1: Write a failing end-to-end bare invocation test**
+- [ ] **Step 1: Pin the current legacy behavior before refactoring**
 
-```python
-def test_bare_runner_queries_current_repo_without_network(repo_with_graph, monkeypatch):
-    repo, _ = repo_with_graph
-    monkeypatch.chdir(repo / "src")
-    monkeypatch.setenv("JEV_MEMORY_PILOT_API_KEY", "must-not-be-read")
-    with patch("tools.jeviphy_autorun.query_unscoped_graphify", return_value="answer\n") as query:
-        assert run.main([]) == 0
-    query.assert_called_once()
-```
+Add characterization tests for graph-only output, valid offline decisions, dry-run, missing key, rejected key, and paid success. Assert stdout, stderr category, sidecar creation, request count, and exit status. These tests must pass before changing the runner.
 
-Patch `os.environ.get` narrowly or pass an environment mapping so the test proves the default path never requests `JEV_MEMORY_PILOT_API_KEY`.
+- [ ] **Step 2: Extract a structured core without changing legacy output**
 
-- [ ] **Step 2: Add failing JSON-envelope and corpus-routing tests**
+Move the body after argument parsing into `run_pilot(PilotConfig)`. Return:
 
 ```python
-def test_auto_json_has_stable_envelope(repo_with_graph, capsys): ...
-def test_missing_corpus_uses_graph_only(repo_with_graph): ...
-def test_valid_corpus_delegates_to_existing_query_main(repo_with_graph, private_corpus): ...
-def test_invalid_corpus_falls_back_without_prompt(repo_with_graph, invalid_corpus): ...
+@dataclass(frozen=True)
+class PilotOutcome:
+    answer: str
+    model_id: str | None
+    actual_cost: float | None
+    memory_applied: bool
+    live_enrichment: Literal["not_requested", "applied", "skipped"]
 ```
 
-For invalid optional corpus input, emit one bounded stderr status and use graph-only fallback. Keep explicit evaluation commands strict.
+Make `decide_once` return data without printing. `run_pilot` maps `live=False` to `not_requested`, a validated live response to `applied`, and every bounded live fallback to `skipped`. `main()` preserves the existing strict required arguments and byte-compatible stdout/stderr by formatting the outcome at the CLI boundary. Do not catch programming errors or weaken corpus validation.
 
-- [ ] **Step 3: Route no arguments and `auto` through one implementation**
+- [ ] **Step 3: Write failing auto-routing tests**
+
+Cover:
 
 ```python
-def main(argv: list[str] | None = None) -> int:
-    arguments = list(sys.argv[1:] if argv is None else argv)
-    if not arguments or arguments[0] == "auto":
-        return auto(arguments[1:] if arguments else [], Path.cwd())
-    if arguments[0] == "doctor":
-        return doctor(arguments[1:])
-    if arguments[0] == "query":
-        return query_command(arguments[1:])
-    if arguments[0] == "benchmark":
-        return benchmark(arguments[1:])
-    return auto(arguments, Path.cwd())
+def test_bare_runner_uses_current_repo_without_reading_provider_key(...): ...
+def test_explicit_auto_question_wins(...): ...
+def test_single_case_corpus_uses_trusted_fast_source_seed(...): ...
+def test_corpus_without_eligible_source_stays_graph_only(...): ...
+def test_multiple_case_corpus_falls_back_once_without_prompt(...): ...
+def test_explicit_question_mismatching_corpus_falls_back_to_graph(...): ...
+def test_auto_json_has_stable_envelope(...): ...
+def test_query_subcommand_keeps_legacy_parser(...): ...
 ```
 
-`query QUESTION` is the human-facing query form. Preserve the legacy pilot argument set behind `query --corpus ... --case-id ...` by detecting those flags and delegating to `query_main`.
+Question precedence is: explicit `--question`, one valid corpus case, then Graphify suggestion. A corpus participates only when it has exactly one case, one consistent project, and a question equal to the selected question; any ambiguity or mismatch emits one status and uses graph-only mode. Offline corpus execution reuses `candidate_mode="fast-source"`; it reports memory use only when trusted cited nodes actually seed Graphify.
 
-- [ ] **Step 4: Implement the result envelope**
+- [ ] **Step 4: Implement the auto result and default path**
 
 ```python
 @dataclass(frozen=True)
@@ -294,78 +309,88 @@ class AutoResult:
     answer: str
 ```
 
-Human output prints `Question: ...`, then the unchanged answer. JSON uses `json.dumps(asdict(result), sort_keys=True)`. Never include observation summaries or provider bodies.
+Bare execution never reads `JEV_MEMORY_PILOT_API_KEY`. Live mode reads it only after `--live --approved-paid-use --max-requests 1`, successful corpus validation, and construction of at least one eligible pair. A live request with no eligible pair returns `skipped` with zero credential access and zero provider calls. Set `mode=memory_live` only for `live_enrichment=applied`; otherwise set `memory_offline` only when `PilotOutcome.memory_applied` is true, and `graph_only` for exact fallback. Copy `PilotOutcome.live_enrichment` into the auto envelope; every bounded unavailable outcome preserves the offline answer. Only the outer CLI prints status, so each failure produces exactly one line.
 
-- [ ] **Step 5: Make doctor defaults match auto discovery**
+Human output is `Question: ...\n` followed by the unchanged answer. JSON uses `json.dumps(asdict(result), sort_keys=True)` and contains no corpus text, provider body, or secret.
 
-Change `doctor` so `--repo` and `--graph` are optional and default through `resolve_context`. Add corpus checks only when `--corpus` is supplied. Keep non-zero exit status for missing/stale graph or an explicitly supplied invalid corpus.
+- [ ] **Step 5: Keep CLI grammar unambiguous**
 
-- [ ] **Step 6: Run focused tests and commit**
-
-```bash
-mac-gate uv run --frozen pytest tests/test_jeviphy_autorun.py tests/test_jeviphy_skill.py tests/test_jev_memory_pilot.py -q
-mac-gate uv run --frozen ruff check tools/jeviphy_autorun.py skills/jeviphy/scripts/run.py tests/test_jeviphy_autorun.py tests/test_jeviphy_skill.py
-git add tools/jeviphy_autorun.py skills/jeviphy/scripts tests/test_jeviphy_autorun.py tests/test_jeviphy_skill.py
-git commit -m "feat: add zero-configuration Jeviphy command"
+```python
+def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if not arguments or arguments[0] == "auto":
+        return auto(arguments[1:] if arguments else [], Path.cwd())
+    if arguments[0] == "doctor":
+        return doctor(arguments[1:])
+    if arguments[0] == "query":
+        return query_main(arguments[1:])
+    if arguments[0] == "benchmark":
+        return benchmark(arguments[1:])
+    raise SystemExit("unknown command; use auto --question QUESTION")
 ```
 
-### Task 4: Finish Gracefully When Live Jev Is Unavailable
+`query` remains the strict legacy pilot command. Explicit zero-configuration questions use `auto --question QUESTION`; unknown commands and misspelled options fail with one usage diagnostic. Never detect legacy mode by searching for flags or reinterpret an option as question text.
+
+- [ ] **Step 6: Make doctor use the same resolver**
+
+Make `--repo` and `--graph` optional and inspect them through `inspect_context`. Run corpus checks only when `--corpus` is present. Doctor remains read-only: missing/stale/corrupt graph and an explicitly supplied invalid corpus are non-zero. Only `auto` invokes `ensure_context` repair.
+
+- [ ] **Step 7: Synchronize portable files and create the core commit**
+
+Copy the four project modules into `skills/jeviphy/scripts/tools/` and update current project-to-portable byte-parity tests. Keep the pinned-commit test on the old file set until the new immutable core commit exists. Run the focused suite while excluding only `test_pinned_commit_matches_portable_core`, whose old immutable pin is expected to fail until the next commit:
+
+```bash
+mac-gate uv run --frozen pytest \
+  tests/test_jev_memory_pilot.py tests/test_jeviphy_autorun.py tests/test_jeviphy_skill.py \
+  -q -k 'not test_pinned_commit_matches_portable_core'
+git add tools skills/jeviphy/scripts tests/test_jev_memory_pilot.py \
+  tests/test_jeviphy_autorun.py tests/test_jeviphy_skill.py
+git commit -m "feat: add zero-configuration Jeviphy core"
+CORE_SHA=$(git rev-parse HEAD)
+```
+
+Update the PEP 723 `graphifyy @ git+...@<sha>` pin in `skills/jeviphy/scripts/run.py` to the printed `CORE_SHA`. The pin must reference the preceding core commit because a commit cannot contain its own SHA.
+
+- [ ] **Step 8: Validate the pin and commit the pin update**
+
+```bash
+mac-gate uv run --frozen pytest tests/test_jev_memory_pilot.py tests/test_jeviphy_autorun.py tests/test_jeviphy_skill.py -q
+mac-gate uv run --frozen ruff check tools/jev_memory_pilot.py tools/jev_memory_pilot_api.py tools/jeviphy_autorun.py skills/jeviphy/scripts/run.py tests/test_jeviphy_autorun.py
+```
+
+Expand `test_pinned_commit_matches_portable_core` to all four modules and assert their project and portable bytes equal the files at `CORE_SHA`, then commit the pin-only update. Do not modify those modules after this point without repeating the core-commit/pin sequence.
+
+### Task 4: Preserve Graceful Live Fallback Without New Provider Machinery
 
 **Files:**
-- Modify: `tools/jev_memory_pilot_api.py`
-- Modify: `skills/jeviphy/scripts/tools/jev_memory_pilot_api.py`
-- Modify: `tools/jev_memory_pilot.py`
-- Modify: `skills/jeviphy/scripts/tools/jev_memory_pilot.py`
-- Modify: `tests/test_jev_memory_pilot.py`
+- Modify only if a regression test fails: `tools/jev_memory_pilot_api.py`
+- Modify only if the project file changes: `skills/jeviphy/scripts/tools/jev_memory_pilot_api.py`
+- Modify: `tests/test_jev_memory_pilot_api.py`
 - Modify: `tests/test_jeviphy_autorun.py`
 
-**Interfaces:**
-- Consumes: existing `decide_once(...)` and live flags.
-- Produces: `DecisionOutcome(answers, model_id, cost, status)` where status is `not_requested`, `applied`, or `skipped`.
+- [ ] **Step 1: Reuse the existing bounded provider behavior**
 
-- [ ] **Step 1: Pin every unavailable-provider outcome**
+The API blocks redirects, performs one request, rejects malformed/missing-cost responses, and returns baseline inputs for missing or rejected keys. Its status-free return is normalized by `run_pilot`; add regression coverage without introducing another provider abstraction.
 
-```python
-@pytest.mark.parametrize("failure", [
-    "missing_key", "http_401", "http_429", "redirect", "timeout", "malformed", "missing_cost",
-])
-def test_live_failure_returns_offline_answer_without_prompt(failure, live_case, capsys): ...
-```
+- [ ] **Step 2: Pin auto-level status mapping**
 
-Mock `call_jev` for each outcome. Assert one call at most, exit zero, exact offline answer, no provider body, no key value, and exactly one `live_enrichment=skipped` status.
+For missing key, HTTP 401/429, redirect, timeout, malformed JSON, oversized response, and missing cost, assert:
 
-- [ ] **Step 2: Introduce the typed decision outcome**
+- zero or one provider call as appropriate;
+- exit zero from `auto`;
+- the exact offline answer;
+- exactly one `live_enrichment=skipped` status;
+- no provider response body, key, or credential-remediation request.
 
-```python
-@dataclass(frozen=True)
-class DecisionOutcome:
-    answers: dict[tuple[str, str], dict]
-    model_id: str | None
-    cost: float | None
-    status: Literal["not_requested", "applied", "skipped"]
-```
+For a valid response, assert `memory_live`, `live_enrichment=applied`, and the actual cost line. Default, dry-run, invalid-corpus, and empty-pair paths must make zero provider calls; invalid-corpus and empty-pair paths must also make zero key reads.
 
-Return `skipped` for every caught uncertain outcome. Do not widen the caught exception set beyond provider/network/validation failures. Programming errors must still fail tests.
-
-- [ ] **Step 3: Thread status into `AutoResult`**
-
-The auto command maps `DecisionOutcome.status` directly into `live_enrichment`. Human output emits no question or remediation request. Stderr contains only the bounded status.
-
-- [ ] **Step 4: Preserve the no-retry contract**
-
-Assert the provider mock call count is exactly one for failures after a request and zero for a missing key. Keep the existing paid-use flag and request-cap validation before any network call.
-
-- [ ] **Step 5: Synchronize portable modules, test, and commit**
+- [ ] **Step 3: Run the focused gate**
 
 ```bash
-cp tools/jev_memory_pilot.py skills/jeviphy/scripts/tools/jev_memory_pilot.py
-cp tools/jev_memory_pilot_api.py skills/jeviphy/scripts/tools/jev_memory_pilot_api.py
-cp tools/jeviphy_autorun.py skills/jeviphy/scripts/tools/jeviphy_autorun.py
-mac-gate uv run --frozen pytest tests/test_jev_memory_pilot.py tests/test_jeviphy_autorun.py tests/test_jeviphy_skill.py -q
-mac-gate uv run --frozen ruff check tools/jev_memory_pilot.py tools/jev_memory_pilot_api.py tools/jeviphy_autorun.py
-git add tools skills/jeviphy/scripts tests/test_jev_memory_pilot.py tests/test_jeviphy_autorun.py tests/test_jeviphy_skill.py
-git commit -m "fix: preserve Jeviphy answers when live enrichment fails"
+mac-gate uv run --frozen pytest tests/test_jev_memory_pilot_api.py tests/test_jev_memory_pilot.py tests/test_jeviphy_autorun.py -q
 ```
+
+If production modules change, repeat Task 3 Steps 7–8 so the portable dependency pin remains truthful.
 
 ### Task 5: Make Claude Code and Codex Use the Executable Contract
 
@@ -384,7 +409,8 @@ git commit -m "fix: preserve Jeviphy answers when live enrichment fails"
 ```python
 def test_skill_bare_path_delegates_to_runner():
     text = skill_text()
-    assert "python scripts/run.py auto" in text
+    assert "uv run" in text
+    assert "scripts/run.py auto" in text
     assert "Do not reproduce auto discovery in the host prompt" in text
 
 
@@ -396,11 +422,11 @@ def test_installed_hosts_contain_auto_module(tmp_path):
 
 - [ ] **Step 2: Reduce the skill's default flow to one executable call**
 
-The default section must instruct the host to run the portable auto command from the current directory, then verify cited source files before reporting. Keep memory-gateway retrieval as an optional host action that creates a private corpus and reruns auto with `--corpus`; never make it a prerequisite.
+The default section must resolve the installed skill directory, then run `uv run <installed-skill-dir>/scripts/run.py auto` while preserving the target repository as the process cwd. A relative `python scripts/run.py` command is invalid because cwd belongs to the target repository and a clean host may not have Graphify dependencies installed. After the command, verify cited source files before reporting. Keep memory-gateway retrieval as an optional host action that creates a private corpus and reruns auto with `--corpus`; never make it a prerequisite.
 
 - [ ] **Step 3: Test installation and upgrade behavior**
 
-Cover clean installs, repeated receipt-owned installs, refusal to overwrite an unowned directory, and uninstall preservation. Verify both hosts receive byte-identical Jeviphy files.
+Cover clean installs, repeated receipt-owned installs, refusal to overwrite an unowned directory, and uninstall preservation. Verify both hosts receive byte-identical Jeviphy files. From a nested directory in a temporary Git repository, execute each installed runner with `uv run <absolute-script-path> auto --question ...`; assert it keeps the target cwd and completes without importing from the Jeviphy checkout.
 
 - [ ] **Step 4: Run host tests and commit**
 
@@ -411,7 +437,7 @@ git add skills/jeviphy scripts/install_jeviphy_skill.py tests/test_jeviphy_insta
 git commit -m "feat: unify bare Jeviphy across Claude and Codex"
 ```
 
-### Task 6: Prove Zero-Configuration Usability Against Graphify
+### Task 6: Prove Runner Usability Against Direct Graphify
 
 **Files:**
 - Create: `tools/jeviphy_zero_config_eval.py`
@@ -421,52 +447,43 @@ git commit -m "feat: unify bare Jeviphy across Claude and Codex"
 - Create: `docs/jeviphy-zero-configuration-evaluation.md`
 
 **Interfaces:**
-- Consumes: 30 frozen cases from at least 6 public repositories, exact commits, prebuilt graph hashes, and direct Graphify/Jeviphy commands.
-- Produces: append-only JSONL records and `score(records: Sequence[RunRecord]) -> ZeroConfigScore`.
+- Consumes: 30 frozen runner cases from at least 6 public repositories, immutable commits, graph hashes, and explicit expected outcomes.
+- Produces: private append-only JSONL plus `score(records) -> ZeroConfigScore` with `pass`, `fail`, or `insufficient_evidence`.
 
 - [ ] **Step 1: Write manifest and scorer tests**
 
-```python
-def test_manifest_requires_30_cases_and_6_repositories(valid_manifest): ...
-def test_score_requires_every_paired_case(records): ...
-def test_score_fails_when_any_user_followup_occurs(records): ...
-def test_score_checks_exact_fallback_after_header(records): ...
-def test_score_enforces_median_and_p95_overhead(records): ...
-```
+Test the 30-case/6-repository minimum, complete paired denominators, exact fallback, diagnostics, median/p95 overhead, and `interaction_required == 0`. Missing, timed-out, or malformed records produce `insufficient_evidence`, never disappear.
 
-The scorer returns `pass`, `fail`, or `insufficient_evidence`; missing pairs never disappear from the denominator.
+- [ ] **Step 2: Freeze cases and denominators before execution**
 
-- [ ] **Step 2: Freeze the usability manifest before running**
+Include ready graph, nested cwd, explicit question, auto question, no corpus, source-seeded single-case corpus, no-eligible-source corpus, ambiguous corpus, successful stale/missing/corrupt repairs, forced repair failure, outside Git, missing key, and expired key. Mark which cases enter exact-output and timing denominators; error-path cases do not enter latency ratios.
 
-Each case records repository URL, immutable commit, graph SHA-256, explicit or auto-question mode, expected repair state, Graphify command, Jeviphy command, timeout, and whether memory/live enrichment is available. Include ready graph, nested cwd, explicit question, no corpus, stale graph, missing graph, outside Git, malformed corpus, missing key, and expired key cases.
+- [ ] **Step 3: Compare the same question in both arms**
 
-- [ ] **Step 3: Implement paired execution without shell interpolation**
+For auto-question cases, select the question once before the timed region, persist its hash, then run direct Graphify and Jeviphy with that same question. Measure selection latency separately. Alternate arm order, perform one warm-up, and run five measured pairs for timing cases.
 
-Use argument arrays with `subprocess.run`, a clean temporary home, network disabled for default cases, alternating arm order, one warm-up, and five measured passes for timing cases. Record stdout/stderr hashes, exit status, elapsed time, prompt/follow-up count, selected question, and input pins.
+- [ ] **Step 4: Prove the runner does not request interaction or network by default**
 
-- [ ] **Step 4: Generate the mechanical scorecard**
+Run every case with stdin connected to `DEVNULL`. Classify a prompt, stdin read, timeout waiting for input, or credential instruction as `interaction_required`. For default and repair cases, inject a temporary `sitecustomize.py` that rejects IPv4/IPv6 socket connections; both arms use the same environment. Assert repair child environments contain no provider key.
 
-Pass only when all spec quality gates pass. Write raw records outside Git first, redact and hash them, then commit only the aggregate report and artifact hashes. The report must say `not demonstrated` for any missing gate.
+Use argument arrays with `subprocess.run`; never interpolate shell strings. Record exit code, elapsed time, stdout/stderr hashes, selected-question hash, interaction status, arm order, and immutable input pins.
 
-- [ ] **Step 5: Run local validation**
+- [ ] **Step 5: Generate the mechanical scorecard**
+
+Pass only when every SDD quality gate passes. Write raw records under a mode-0700 directory outside Git, commit only aggregate counts, timings, hashes, and failure classes, and state `not demonstrated` for any missing gate. Label the result as **runner-level** evidence; host model behavior is covered only by deterministic delegation tests unless separately authorized and measured.
+
+- [ ] **Step 6: Validate, run serially, and commit evidence**
 
 ```bash
 mac-gate uv run --frozen pytest tests/test_jeviphy_zero_config_eval.py tests/test_jeviphy_autorun.py tests/test_jeviphy_skill.py -q
 mac-gate uv run --frozen ruff check tools/jeviphy_zero_config_eval.py tests/test_jeviphy_zero_config_eval.py
 ```
 
-Expected: tests and lint pass. Do not run the 30-case benchmark inside the test suite.
+Run the frozen evaluator serially with a declared time ceiling and no paid API. Keep the existing large benchmark separate. Commit the harness, frozen manifest/schema, and bounded public report only after the run completes.
 
-- [ ] **Step 6: Run the frozen 30-case comparison and publish the bounded result**
+- [ ] **Step 7: Loop on every failed gate before integration**
 
-Run the evaluator serially with its declared cost and time ceiling. Keep the existing large benchmark alive and separate. Publish completion, follow-up count, exact-fallback rate, median/p95 overhead, and each failure class. Do not claim parity unless every gate passes.
-
-- [ ] **Step 7: Commit the harness and public report**
-
-```bash
-git add tools/jeviphy_zero_config_eval.py tests/test_jeviphy_zero_config_eval.py benchmarks/jeviphy-zero-config docs/jeviphy-zero-configuration-evaluation.md
-git commit -m "test: prove Jeviphy zero-configuration parity"
-```
+When the score is `fail` or `insufficient_evidence`, retain that immutable result, map the failure to its owning task, add one regression test, apply the smallest correction, and rerun that task's focused gate. Create a new candidate SHA and rerun the same frozen manifest; never edit case membership or thresholds after viewing results. Repeat until the scorecard passes or a concrete external blocker is documented. Task 7 cannot start with a non-passing scorecard.
 
 ### Task 7: Final Review, Installation, and Integration
 
@@ -474,8 +491,10 @@ git commit -m "test: prove Jeviphy zero-configuration parity"
 - Review: every file changed in Tasks 1 through 6.
 - Update only if evidence requires it: `README.md`, `docs/jeviphy/index.html`.
 
+**Precondition:** the frozen zero-configuration scorecard is `pass` for the exact candidate SHA.
+
 **Interfaces:**
-- Consumes: completed implementation and frozen scorecard.
+- Consumes: completed implementation and passing frozen scorecard.
 - Produces: one integrated release candidate with installed Claude Code/Codex skills.
 
 - [ ] **Step 1: Review the complete diff against the SDD spec**
@@ -514,10 +533,27 @@ Run the receipt-based installer from the integrated commit for Claude Code and C
 
 Record the existing large benchmark's original candidate SHA and this release candidate SHA. Never combine their records. Schedule a fresh paired product run only after the zero-configuration usability gate passes.
 
+## Optimization Loop
+
+A change is **substantial** when it changes architecture, task order, an interface, a testable acceptance rule, a safety boundary, or the evidence needed for a claim. Wording and formatting alone do not reset the convergence streak.
+
+- **Pass 1 — substantial improvements found and applied:** fixed the undefined `graph_path` interface; removed the `query QUESTION` collision with the strict legacy parser; defined single-case corpus inference; reused existing no-retry provider behavior; added the immutable core-commit/self-pin sequence; made runner-level interaction and network evidence measurable; and required both arms to use the same frozen question.
+- **Pass 2 — substantial improvements found and applied:** corrected persisted versus in-memory graph metadata; added corrupt/malformed graph cases; updated every question-selection example to the real signature; made provider helpers silent and centralized exactly-once status output; and prevented a mismatched corpus question from influencing an explicit query.
+- **Pass 3 — substantial improvements found and applied:** changed the installed command to absolute skill-path execution through `uv run` while preserving the target cwd; added clean-home execution proof; made unknown commands fail closed; and made the core-commit/self-pin transition directly executable.
+- **Pass 4 — substantial improvement found and applied:** added a fail-to-owning-task correction loop with immutable failed evidence and blocked integration unless the frozen scorecard passes for the exact candidate SHA.
+- **Pass 5 — substantial improvement found and applied:** moved credential access behind corpus validation and non-empty eligible-pair construction, with explicit zero-read and zero-call regression coverage.
+- **Pass 6 — substantial improvement found and applied:** defined real offline memory behavior through the existing trusted `fast-source` path and made result modes reflect whether memory actually changed traversal seeds.
+- **Pass 7 — substantial improvement found and applied:** separated current project-to-portable byte parity from immutable dependency-pin parity so the new autorun module can be developed before it exists in the next pinned commit.
+- **Pass 8 — substantial improvement found and applied:** replaced repair instructions with one automatic offline Graphify extract/update attempt, credential-stripped child execution, mandatory revalidation, and fail-closed no-retry behavior.
+- **Pass 9 — no substantial improvement:** architecture, interfaces, acceptance rules, safety boundaries, task order, and evidence gates remained unchanged; only the file map and credential-removal list were clarified.
+- **Pass 10 — substantial improvement found and applied:** split corrupt-graph recovery from missing-graph creation and required Graphify `extract --force --code-only` for the corrupt artifact path.
+- **Pass 11 — no substantial improvement:** architecture, CLI grammar, repair flow, cost boundary, privacy boundary, evidence denominators, and integration gate remained complete; only one task cross-reference was corrected.
+- **Pass 12 — no substantial improvement:** a final adversarial scan found no unresolved interface, contradictory scenario, unsafe provider path, mutable benchmark threshold, or integration bypass.
+- **Consecutive passes without substantial improvement:** 2 of 2 — convergence goal met.
+
 ## Self-Review Result
 
 - **Spec coverage:** ZC1–ZC8 map to Tasks 1–6; integration and installed-state proof are in Task 7.
 - **Placeholder scan:** no deferred implementation placeholders remain.
-- **Type consistency:** `InvocationContext`, `AutoResult`, `DecisionOutcome`, and `ZeroConfigScore` have one definition and named consumers.
-- **Review focus:** nested worktrees, metadata migration, absent question signal, provider failures, and exact output compatibility each have an owning test.
-- **Scope:** the plan adds one orchestration module and one evaluation harness; it reuses existing Graphify and Jeviphy logic and adds no runtime dependency.
+- **Type consistency:** `InvocationContext`, `PilotOutcome`, `AutoResult`, and `ZeroConfigScore` each have one definition and named consumers.
+- **Scope:** one orchestration module, one small query-core extraction, and one evaluation harness; no runtime dependency or provider machinery is added.
