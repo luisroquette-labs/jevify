@@ -31,3 +31,9 @@ A bare invocation can resolve the containing Git repository, choose a question, 
 ## Separate product benchmark
 
 The earlier frozen product-task run remains separate: Jeviphy candidate `99b944748350f4c341ffb3ae5320df2e38269959`, 186 arm rows / 93 pairs, 184 zero-exit wrapper processes, two timeouts, and no recorded trajectories. Post-run inspection found `ImageBuildError` in all 184 zero-exit arms because Modal had reached its billing-cycle spend limit. The old wrapper misclassified those internal failures as completed. This run contains no product evidence, is not pooled with the runner result above, and must not be used for speed or quality claims.
+
+## Release-candidate install evidence
+
+The frozen matrix is `benchmarks/jeviphy-v2/install-matrix.json`: five clean-home attempts for Claude and five for Codex on each of Ubuntu and macOS. Every attempt installs, runs `doctor`, makes one offline query, reinstalls, and performs receipt-safe uninstall with provider keys removed and stdin closed. Ubuntu runs in the task Codespace. macOS runs only for a `jeviphy-rc-*` tag through `.github/workflows/jeviphy-rc-evidence.yml`. The two journals must name the same candidate SHA before aggregation.
+
+The 19 October zero-configuration result remains historical until the current candidate proves that the installed runner, portable core, installer, and Graphify query path are byte-equivalent to that runner. Any difference requires a fresh 30-case remote run; the historical numbers are never silently relabeled as current evidence.

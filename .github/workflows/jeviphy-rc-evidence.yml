@@ -1,0 +1,35 @@
+name: Jeviphy RC evidence
+
+on:
+  push:
+    tags: ["jeviphy-rc-*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jeviphy-rc-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-install-evidence:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.13"
+      - run: uv sync --frozen
+      - name: Run ten clean-home attempts
+        run: |
+          uv run --frozen python -m tools.jeviphy_install_eval \
+            --matrix benchmarks/jeviphy-v2/install-matrix.json \
+            --os macOS \
+            --candidate "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/jeviphy-install-evidence"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jeviphy-macos-install-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/jeviphy-install-evidence/install-records.jsonl
+          retention-days: 30
