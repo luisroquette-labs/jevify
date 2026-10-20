@@ -11,17 +11,18 @@ Use Graphify's existing graph and query engine. Treat memory links as suggestion
 
 When the user invokes Jeviphy without an explicit question:
 
-1. Generate three to five useful questions from the current graph, recent repository changes, and the user's active problem.
-2. Rank them by user impact, operational risk, and how much the graph can clarify.
-3. Select the highest-value question and run the baseline query automatically. Do not ask the user to choose a question first.
-4. Check the selected result against the referenced source files before presenting conclusions. Separate graph suggestions, source-confirmed behavior, and runtime facts.
+1. Use the current working directory as the target repository. Do not ask for a repository or path unless the directory is not inside a Git worktree.
+2. Use `graphify-out/graph.json`; build or refresh it offline when absent or stale.
+3. Generate three to five useful questions from the graph, recent repository changes, and the user's active problem. Rank them by user impact, operational risk, and how much the graph can clarify.
+4. Select the highest-value question and run the baseline query automatically. Do not ask the user to choose a question first.
+5. Check the selected result against the referenced source files before presenting conclusions. Separate graph suggestions, source-confirmed behavior, and runtime facts.
 
-When the user supplies a question, use it directly. Question generation and baseline queries stay offline and require no paid API approval.
+When the user supplies a question, use it directly. If no approved memory corpus is available, run Graphify's direct offline query from [the graph workflow](references/graph.md) and report that memory enrichment was skipped. A corpus is optional for a bare invocation and must never block the baseline. Question generation and baseline queries stay offline and require no paid API approval.
 
 ## Workflow
 
 1. Locate the target Git repository and its `graphify-out/graph.json`. Confirm the graph's `built_at_commit` equals `git rev-parse HEAD`; use the [graph commands](references/graph.md) to build or refresh it offline when absent or stale.
-2. Retrieve only the user's selected project observations through the supported Claude Mem bridge or another approved export. Keep the corpus outside Git, with mode `0700` on its directory and `0600` on files. Never read the Claude Mem database directly. Use the [memory workflow](references/memory.md) and [corpus schema](references/corpus.md).
+2. When approved project observations are available, retrieve only the relevant ones through the supported Claude Mem bridge or another approved export. Keep the corpus outside Git, with mode `0700` on its directory and `0600` on files. Never read the Claude Mem database directly. Use the [memory workflow](references/memory.md) and [corpus schema](references/corpus.md). Otherwise continue with the graph-only baseline.
 3. Run the baseline query before any Jev decision. Example:
 
    ```bash
@@ -32,7 +33,7 @@ When the user supplies a question, use it directly. Question generation and base
 
 4. For an offline relevance experiment, add `--decisions /private/path/decisions.json`. To test the bounded memory-aware candidate pool, add `--candidate-mode memory`. With reviewed `source_paths` on an observation, it keeps the question's first eight nodes and fills up to two slots with memory-scored nodes in those files. Without a scored node in those files, it uses the earlier seven-question/three-memory rule. The default `question` mode remains the comparison arm. For a local request preview, add `--dry-run`. Review its private payload before any external transmission.
    `--candidate-mode fast-source` is an optional offline experiment: it scores only nodes in cited source files, using the question and bounded memory summary in one pass, then uses the best three as Graphify traversal seeds. It can return fewer than ten nodes. Without cited paths and without a payload/decision request, it delegates directly to Graphify; unscored cited files and invalid Jev decisions use the unseeded answer path. Its three-repository stress result supports a conditional speed and precision gain for synthetic source-cited cases, not a general p95 or Jev-model gain; see `docs/jeviphy-fast-source-stress-20261018.md`.
-5. Run `--live --approved-paid-use --max-requests 1` only after the user explicitly approves this paid API call and the exact class of code/memory content to send. Live Jev currently requires the user to have their own OpenRouter account and manually supply their own project-scoped key as `JEV_MEMORY_PILOT_API_KEY`; Jeviphy provides no hosted key or OAuth flow. Never auto-use a personal token or retry an uncertain call.
+5. Run `--live --approved-paid-use --max-requests 1` only after the user explicitly approves paid Jev calls and the exact class of code/memory content to send. That approval persists for the current conversation within its approved provider, project, content, request, and cost limits: continue automatically without asking again or offering offline/live choices after every step. Ask again only before exceeding the approved scope. Live Jev currently requires the user to have their own OpenRouter account and manually supply their own project-scoped key as `JEV_MEMORY_PILOT_API_KEY`; Jeviphy provides no hosted key or OAuth flow. Never auto-use a personal token or retry an uncertain call.
 
 The runner caps work at ten nodes, three observations, thirty decisions, and a 24 KiB request. Missing or malformed decisions fall back to the unseeded Graphify query, including in memory candidate mode. Memory-aware query runs write `graphify-out/jev-memory-decisions.json`; no-source pass-through does not. Dry runs save a private payload outside Git. Neither mode alters the structural graph.
 
