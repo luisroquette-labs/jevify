@@ -16,6 +16,7 @@ INTERNAL_PRODUCT_WIN = (
     "Jeviphy passed the internal frozen v2 product gates; external reproduction is pending."
 )
 REPRODUCED_PRODUCT_WIN = "Jeviphy surpassed Graphify on the frozen v2 benchmark."
+BETA_READY = "Jeviphy is ready for a limited source-aware beta."
 
 
 @dataclass(frozen=True)
@@ -126,8 +127,29 @@ def _score_retrieval(records: list[dict]) -> GateResult:
 
 
 def _score_product(records: list[dict]) -> GateResult:
+    seen: set[tuple[str, int]] = set()
+    for wrapper in records:
+        pair = wrapper.get("pair", wrapper) if isinstance(wrapper, dict) else None
+        if not isinstance(pair, dict):
+            raise ValueError("product record must contain a pair")
+        case_id, pass_index = pair.get("case_id"), pair.get("pass_index")
+        if not isinstance(case_id, str) or not isinstance(pass_index, int):
+            raise ValueError("product pair has invalid identity")
+        key = (case_id, pass_index)
+        if key in seen:
+            raise ValueError("product evidence contains a duplicate pair")
+        seen.add(key)
+        if pair.get("stratum") not in {"valid_source", "stale_source", "no_source"}:
+            raise ValueError("product pair has an unknown stratum")
+        for arm_name in ("baseline", "jeviphy"):
+            arm = pair.get(arm_name)
+            if not isinstance(arm, dict) or not isinstance(arm.get("success"), bool):
+                raise ValueError("product pair must contain boolean success for both arms")
+            duration = arm.get("duration_ms")
+            if not isinstance(duration, (int, float)) or isinstance(duration, bool) or duration <= 0:
+                raise ValueError("product arm duration must be positive")
     pairs = _first_pairs(records)
-    if not pairs:
+    if len(pairs) != 120:
         return GateResult("insufficient_evidence", {})
     differences = [
         float(bool(_arm(pair, "jeviphy")["success"]))
@@ -243,6 +265,11 @@ def allowed_claim(scorecard: Scorecard) -> str:
         )
     ):
         return INTERNAL_PRODUCT_WIN
+    if all(
+        gate.status == "pass"
+        for gate in (scorecard.retrieval, scorecard.usability, scorecard.compatibility)
+    ):
+        return BETA_READY
     if scorecard.retrieval.status == "pass":
         return RETRIEVAL_ONLY
     return NO_DIFFERENCE
