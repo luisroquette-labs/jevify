@@ -9,6 +9,7 @@ from tools.jeviphy_product_batch import (
     inspect_swebench_output,
     required_openrouter_budget,
     run_batch,
+    run_one,
 )
 
 
@@ -135,3 +136,23 @@ def test_required_openrouter_budget_uses_per_agent_limit(tmp_path):
     config.write_text("agent:\n  cost_limit: 0.08\nmodel:\n  name: example\n", encoding="utf-8")
 
     assert required_openrouter_budget(config, 186) == Decimal("14.88")
+
+
+def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):
+    captured = {}
+
+    class Process:
+        pid = 1
+
+        def wait(self, timeout=None):
+            return 1
+
+    def popen(command, **kwargs):
+        captured["command"] = command
+        return Process()
+
+    monkeypatch.setattr("tools.jeviphy_product_batch.subprocess.Popen", popen)
+    run_one(tmp_path, tmp_path / "output", "graphify", "case-1", "secret", 1)
+
+    assert captured["command"][-2:] == ["--environment-class", "docker"]
+    assert "swebench_modal.yaml" not in captured["command"]
