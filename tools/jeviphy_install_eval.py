@@ -173,6 +173,39 @@ def score_installs(records: list[InstallRecord]) -> dict:
     }
 
 
+def write_install_score(journals: list[Path], output: Path) -> dict:
+    if not journals:
+        raise ValueError("at least one install journal is required")
+    records: list[InstallRecord] = []
+    canonical = bytearray()
+    for journal in journals:
+        for line_number, line in enumerate(journal.read_bytes().splitlines(), start=1):
+            try:
+                payload = json.loads(line)
+                record = InstallRecord(**payload)
+            except (json.JSONDecodeError, TypeError) as error:
+                raise ValueError(f"invalid install record: {journal}:{line_number}") from error
+            if (
+                record.operating_system not in {"Ubuntu", "macOS"}
+                or record.host not in {"claude", "codex"}
+                or not isinstance(record.success, bool)
+                or not isinstance(record.seconds, (int, float))
+                or isinstance(record.seconds, bool)
+                or record.seconds < 0
+            ):
+                raise ValueError(f"invalid install record: {journal}:{line_number}")
+            encoded = json.dumps(asdict(record), sort_keys=True).encode() + b"\n"
+            if line + b"\n" != encoded:
+                raise ValueError(f"non-canonical install record: {journal}:{line_number}")
+            records.append(record)
+            canonical.extend(encoded)
+    score = score_installs(records)
+    score["journal_sha256"] = _sha256(bytes(canonical))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(score, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return score
+
+
 def _append(path: Path, record: InstallRecord) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
@@ -184,11 +217,20 @@ def _append(path: Path, record: InstallRecord) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--matrix", type=Path, required=True)
-    parser.add_argument("--os", dest="operating_system", choices=("Ubuntu", "macOS"), required=True)
-    parser.add_argument("--candidate", required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--matrix", type=Path)
+    parser.add_argument("--os", dest="operating_system", choices=("Ubuntu", "macOS"))
+    parser.add_argument("--candidate")
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--score-from", type=Path, nargs="+")
+    parser.add_argument("--score-output", type=Path)
     args = parser.parse_args()
+    if args.score_from:
+        if args.score_output is None:
+            parser.error("--score-output is required with --score-from")
+        write_install_score(args.score_from, args.score_output)
+        return 0
+    if not all((args.matrix, args.operating_system, args.candidate, args.output)):
+        parser.error("--matrix, --os, --candidate, and --output are required")
     matrix = json.loads(args.matrix.read_text(encoding="utf-8"))
     if set(matrix) != MATRIX_KEYS or matrix.get("schema_version") != 1:
         parser.error("invalid install matrix")

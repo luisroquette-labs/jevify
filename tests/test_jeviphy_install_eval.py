@@ -2,7 +2,12 @@ import json
 
 import pytest
 
-from tools.jeviphy_install_eval import InstallRecord, run_attempt, score_installs
+from tools.jeviphy_install_eval import (
+    InstallRecord,
+    run_attempt,
+    score_installs,
+    write_install_score,
+)
 
 
 def _record(index, os_name, *, success=True, candidate="a" * 40):
@@ -42,6 +47,39 @@ def test_clean_attempt_installs_queries_reinstalls_and_uninstalls(tmp_path):
     assert record.success is True
     assert not (tmp_path / "home" / ".codex/skills/jeviphy").exists()
     assert len(record.query_stdout_sha256) == 64
+
+
+def test_write_install_score_seals_two_canonical_journals(tmp_path):
+    journals = []
+    records = [*(_record(i, "Ubuntu") for i in range(10)),
+               *(_record(i, "macOS") for i in range(10))]
+    for offset, os_name in ((0, "Ubuntu"), (10, "macOS")):
+        journal = tmp_path / f"{os_name}.jsonl"
+        journal.write_text("".join(
+            json.dumps(record.__dict__, sort_keys=True) + "\n"
+            for record in records[offset:offset + 10]
+        ))
+        journals.append(journal)
+    output = tmp_path / "install-score.json"
+    score = write_install_score(journals, output)
+    assert score["status"] == "pass"
+    assert len(score["journal_sha256"]) == 64
+    assert json.loads(output.read_text()) == score
+
+
+def test_write_install_score_rejects_noncanonical_journal(tmp_path):
+    journal = tmp_path / "records.jsonl"
+    journal.write_text(json.dumps(_record(0, "Ubuntu").__dict__) + "\n")
+    with pytest.raises(ValueError, match="non-canonical"):
+        write_install_score([journal], tmp_path / "score.json")
+
+
+def test_write_install_score_rejects_non_boolean_success(tmp_path):
+    journal = tmp_path / "records.jsonl"
+    payload = {**_record(0, "Ubuntu").__dict__, "success": "yes"}
+    journal.write_text(json.dumps(payload, sort_keys=True) + "\n")
+    with pytest.raises(ValueError, match="invalid install record"):
+        write_install_score([journal], tmp_path / "score.json")
 
 
 def test_install_matrix_file_is_frozen():
