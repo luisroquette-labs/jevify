@@ -38,19 +38,19 @@ The command never asks the user to prepare a corpus, choose among generated ques
 
 ### ZC1 — Bare Invocation
 
-`python skills/jeviphy/scripts/run.py` with no arguments resolves the top-level Git worktree containing the current directory. An explicit question remains accepted through `query QUESTION`; explicit `--repo`, `--graph`, and `--corpus` values remain supported for evaluation and debugging.
+`python skills/jeviphy/scripts/run.py` with no arguments resolves the top-level Git worktree containing the current directory. An explicit question remains accepted through `auto --question QUESTION`; the existing `query` subcommand remains the strict legacy evaluation interface. Explicit `--repo`, `--graph`, and `--corpus` values remain supported for evaluation and debugging.
 
 Outside a Git worktree, the command exits non-zero with one specific diagnostic. It does not search parent home directories or guess another repository.
 
-### ZC2 — Graph Resolution
+### ZC2 — Graph Resolution and Offline Repair
 
-The default graph is `<repo>/graphify-out/graph.json`. A current readable graph is used without detection or rebuild. A missing graph produces one actionable diagnostic naming the exact Graphify command. A stale graph produces one actionable diagnostic naming the exact update command. The zero-configuration query does not silently analyze a stale graph.
+The default graph is `<repo>/graphify-out/graph.json`. A current readable graph is used immediately. When it is missing, stale, or corrupt, the auto path performs exactly one offline Graphify repair from the resolved repository: `extract . --code-only` for missing state, `extract . --force --code-only` for corrupt state, or `update .` for stale state. The child process receives no AI-provider key and uses no shell interpolation. After repair, Jeviphy reloads and revalidates the graph before querying.
 
-Graph freshness accepts the canonical `_built_at_commit` metadata and the legacy `built_at_commit` field during migration. The graph remains read-only during queries.
+Graph freshness requires the persisted top-level `built_at_commit` field. Graphify `_read_graph` must normalize it to the in-memory `_built_at_commit` attribute; missing, blank, malformed, or mismatched values are stale. A failed repair exits non-zero with the attempted command and bounded Graphify diagnostic; it never loops or asks the user to choose a repair. The graph is read-only after successful repair and during every query.
 
 ### ZC3 — Autonomous Question Selection
 
-An explicit non-empty question always wins. Without one, Jeviphy calls Graphify's existing `suggest_questions(...)` over the current graph and selects the first non-low-confidence question. If no such question exists, it selects the first available suggestion. If the graph yields no usable question, the command exits non-zero with a specific diagnostic instead of asking the user.
+An explicit non-empty question always wins. Otherwise, a valid optional corpus containing exactly one case supplies that case question. Without either source, Jeviphy calls Graphify's existing `suggest_questions(...)` over the current graph and selects the first non-low-confidence question. If no such question exists, it selects the first available suggestion. If the graph yields no usable question, the command exits non-zero with a specific diagnostic instead of asking the user.
 
 The selected question is printed before the answer so the run is auditable.
 
@@ -58,13 +58,13 @@ The selected question is printed before the answer so the run is auditable.
 
 A corpus is optional for the default path. The host skill may create a private temporary corpus through `memory-gateway` and pass its path, but the executable never requires the user to create one. Without a valid corpus, Jeviphy calls `query_unscoped_graphify(...)` with the original selected question.
 
-When a corpus is supplied, existing project, permission, provenance, observation-count, and source-path validation remains unchanged. Invalid or ineligible memory falls back exactly to the Graphify query and does not mutate graph files.
+When a corpus is supplied, the auto path accepts it only when it contains exactly one valid case and one project consistent with its observations; it derives `case-id` and `project` internally. Offline auto mode reuses the existing `fast-source` path and reports `memory_offline` only when trusted cited source nodes actually seed the query; otherwise it returns the exact graph-only fallback and reports `graph_only`. Existing permission, provenance, observation-count, and source-path validation remains unchanged. Multiple-case, invalid, mismatched, or ineligible memory emits one bounded status, falls back exactly to the Graphify query, and does not mutate graph files.
 
 ### ZC5 — Optional Live Jev
 
 The default invocation performs no provider request. Live Jev requires the existing explicit approval flag and request cap. Authorization already established in the current host conversation may be reused only within its approved provider, project, content, request, and cost scope.
 
-A missing, rejected, expired, redirected, timed-out, malformed, or cost-uncertain live request performs no retry. The command emits one concise `live_enrichment=skipped` status on stderr and returns the offline/source-aware answer with exit code zero.
+A live path with no valid corpus or no eligible pairs reads no provider key and makes no request. A missing, rejected, expired, redirected, timed-out, malformed, or cost-uncertain live request performs no retry. The command emits one concise `live_enrichment=skipped` status on stderr and returns the offline/source-aware answer with exit code zero.
 
 ### ZC6 — Stable Result Envelope
 
@@ -82,7 +82,7 @@ The auto path emits human-readable text by default and supports `--json` with th
 }
 ```
 
-Secrets, corpus content, provider error bodies, and API keys never appear in stdout, stderr, graph sidecars, or JSON output.
+`mode` describes applied execution: `graph_only` when memory changed no seed, `memory_offline` when trusted source seeds were used, and `memory_live` when validated live decisions were applied. Secrets, corpus content, provider error bodies, and API keys never appear in stdout, stderr, graph sidecars, or JSON output.
 
 ### ZC7 — Host Skill Integration
 
@@ -109,7 +109,7 @@ No-source query output must equal Graphify's direct query output byte for byte a
 ### Scenario: Explicit question takes precedence
 
 **Given** a current graph
-**When** Jeviphy receives `query "What calls createClient?"`
+**When** Jeviphy receives `auto --question "What calls createClient?"`
 **Then** it uses that exact question
 **And** does not generate or ask for alternatives.
 
@@ -130,13 +130,21 @@ No-source query output must equal Graphify's direct query output byte for byte a
 **And** returns the offline answer with exit code zero
 **And** reports `live_enrichment=skipped`.
 
-### Scenario: Graph is missing or stale
+### Scenario: Graph is missing, corrupt, or stale
 
 **Given** the current directory is a Git worktree
-**And** the default graph is absent or does not match `HEAD`
+**And** the default graph is absent, unreadable, or does not match `HEAD`
 **When** Jeviphy runs
-**Then** it exits non-zero before querying
-**And** prints exactly one command that repairs the detected state.
+**Then** it performs exactly one offline Graphify repair without provider credentials
+**And** reloads and validates the repaired graph
+**And** continues the selected query without user input.
+
+### Scenario: Automatic graph repair fails
+
+**Given** Graphify repair exits non-zero or produces an invalid graph
+**When** Jeviphy revalidates the result
+**Then** it exits non-zero with one bounded diagnostic
+**And** does not retry or ask the user to select a repair command.
 
 ### Scenario: Invocation occurs outside Git
 
@@ -150,12 +158,12 @@ No-source query output must equal Graphify's direct query output byte for byte a
 
 A zero-configuration release candidate passes only when:
 
-1. all 30 frozen usability cases across at least 6 repositories complete without a user follow-up;
+1. all 30 frozen runner cases across at least 6 repositories complete with stdin closed and no `interaction_required` outcome;
 2. no valid-repository case asks for a repository, question, corpus, mode, or credential;
 3. all no-corpus outputs match direct Graphify output after removing the audit header;
 4. median zero-configuration overhead over direct Graphify is at most 10%, and p95 overhead is at most 15%;
-5. missing/stale graph, outside-Git, malformed corpus, and expired-key cases emit the specified bounded diagnostics;
-6. clean-home installs pass for Claude Code and Codex on macOS and Ubuntu; and
+5. missing/stale/corrupt graph cases repair automatically, while repair failure, outside-Git, malformed corpus, and expired-key cases emit the specified bounded outcomes;
+6. clean-home installs pass for Claude Code and Codex on macOS and Ubuntu, and static host-contract tests prove both skills delegate bare invocation to `auto`; and
 7. the frozen product benchmark remains a separate baseline and is rerun for this candidate before any superiority claim.
 
 ## Definition of Done
