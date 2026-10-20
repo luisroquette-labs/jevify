@@ -6,10 +6,15 @@ from pathlib import Path
 import pytest
 
 from tools.jeviphy_product_batch import (
+    ArmResult,
+    evaluate_generated_arm,
     inspect_swebench_output,
+    load_product_journal,
+    remaining_limits,
     required_openrouter_budget,
     run_batch,
     run_one,
+    seal_product_journal,
 )
 
 
@@ -105,15 +110,21 @@ def test_batch_stops_after_first_infrastructure_failure(tmp_path, monkeypatch):
         return ArmResult(arm, instance_id, "infrastructure_failed", 0, False, 0.1, "quota")
 
     monkeypatch.setattr("tools.jeviphy_product_batch.run_one", failed_arm)
+    monkeypatch.setattr(
+        "tools.jeviphy_product_batch.evaluate_generated_arm",
+        lambda root, output_root, result, timeout: _product_record(
+            result.arm, result.instance_id, status="infrastructure_failed", cost="0.01"
+        ),
+    )
     with pytest.raises(RuntimeError, match="infrastructure failure"):
         run_batch(tmp_path, ["case-1", "case-2"], "secret", timeout_seconds=1)
 
     assert calls == [("graphify", "case-1")]
     progress = [
         json.loads(line)
-        for line in (tmp_path / "isolated/run-results.jsonl").read_text().splitlines()
+        for line in (tmp_path / "isolated/product-arms.jsonl").read_text().splitlines()
     ]
-    assert progress[0]["state"] == "infrastructure_failed"
+    assert progress[0]["status"] == "infrastructure_failed"
 
 
 def test_batch_writes_to_separate_output_root(tmp_path, monkeypatch):
@@ -125,9 +136,15 @@ def test_batch_writes_to_separate_output_root(tmp_path, monkeypatch):
         return ArmResult(arm, instance_id, "completed", 0, True, 0.1)
 
     monkeypatch.setattr("tools.jeviphy_product_batch.run_one", completed_arm)
+    monkeypatch.setattr(
+        "tools.jeviphy_product_batch.evaluate_generated_arm",
+        lambda root, output_root, result, timeout: _product_record(
+            result.arm, result.instance_id, cost="0.01"
+        ),
+    )
     run_batch(tmp_path, ["case-1"], "secret", timeout_seconds=1, output_root=output_root)
 
-    assert (output_root / "run-results.jsonl").exists()
+    assert (output_root / "product-arms.jsonl").exists()
     assert not (tmp_path / "isolated").exists()
 
 
@@ -156,3 +173,108 @@ def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):
 
     assert captured["command"][-2:] == ["--environment-class", "docker"]
     assert "swebench_modal.yaml" not in captured["command"]
+
+
+def _product_record(arm, instance_id, *, status="completed", cost="0.02"):
+    from tools.jeviphy_product_eval import ProductArmRecord
+
+    return ProductArmRecord(
+        arm, instance_id, status, False, 1, 2, "a" * 64, "b" * 64, "c" * 64,
+        10, 5, cost, False, None,
+    )
+
+
+def test_two_chunks_receive_cumulative_remaining_limits(tmp_path, monkeypatch):
+    seen = []
+
+    def completed_arm(root, output_root, arm, instance_id, api_key, timeout_seconds):
+        from tools.jeviphy_product_batch import ArmResult
+
+        seen.append((os.environ["MSWEA_GLOBAL_CALL_LIMIT"], os.environ["MSWEA_GLOBAL_COST_LIMIT"]))
+        return ArmResult(arm, instance_id, "completed", 0, True, 0.1)
+
+    monkeypatch.setattr("tools.jeviphy_product_batch.run_one", completed_arm)
+    monkeypatch.setattr(
+        "tools.jeviphy_product_batch.evaluate_generated_arm",
+        lambda root, output_root, result, timeout: _product_record(
+            result.arm, result.instance_id, cost="0.02"
+        ),
+    )
+    output = tmp_path / "out"
+    run_batch(
+        tmp_path, ["case-1"], "secret", output_root=output, max_new_arms=1,
+        max_agent_calls=4, max_cost_usd=Decimal("0.10"),
+    )
+    run_batch(
+        tmp_path, ["case-1"], "secret", output_root=output, max_new_arms=1,
+        max_agent_calls=4, max_cost_usd=Decimal("0.10"),
+    )
+
+    assert seen == [("4", "0.10"), ("3", "0.08")]
+
+
+def test_uncertain_journal_cost_blocks_resume(tmp_path):
+    journal = tmp_path / "product-arms.jsonl"
+    journal.write_text(json.dumps(_product_record("graphify", "case-1", cost=None).__dict__) + "\n")
+
+    with pytest.raises(ValueError, match="cost is uncertain"):
+        load_product_journal(journal)
+
+
+def test_remaining_limits_reject_exhausted_budget():
+    with pytest.raises(ValueError, match="exhausted"):
+        remaining_limits([_product_record("graphify", "case-1", cost="0.10")], 2, Decimal("0.10"))
+
+
+def test_seal_product_journal_requires_complete_pairs(tmp_path):
+    journal = tmp_path / "product-arms.jsonl"
+    rows = [
+        _product_record("graphify", "case-1", cost="0.01"),
+        _product_record("jeviphy", "case-1", cost="0.02"),
+    ]
+    journal.write_text("".join(json.dumps(row.__dict__) + "\n" for row in rows), encoding="utf-8")
+    output = tmp_path / "product-report.json"
+
+    payload = seal_product_journal(
+        journal, output, expected_ids=["case-1"],
+        strata={"case-1": "valid_source"}, pins={"jeviphy_commit": "a" * 40},
+    )
+
+    pair = payload["product_records"][0]["pair"]
+    assert pair["baseline"]["duration_ms"] == 3000
+    assert pair["jeviphy"]["input_tokens"] == 10
+    assert output.stat().st_mode & 0o777 == 0o600
+
+
+def test_completed_generation_uses_official_swebench_report(tmp_path, monkeypatch):
+    output = tmp_path / "out" / "graphify" / "case-1"
+    trajectory = output / "case-1" / "case-1.traj.json"
+    trajectory.parent.mkdir(parents=True)
+    trajectory.write_text(json.dumps({"info": {"model_stats": {
+        "instance_cost": "0.01", "input_tokens": 10, "output_tokens": 2
+    }}}), encoding="utf-8")
+    (output / "preds.json").write_text(json.dumps({"case-1": {
+        "instance_id": "case-1", "model_name_or_path": "model", "model_patch": "diff"
+    }}), encoding="utf-8")
+    captured = {}
+
+    def run(command, **kwargs):
+        captured["command"] = command
+        run_id = command[-1]
+        report = Path(kwargs["cwd"]) / "logs" / "evaluation" / run_id / "results.json"
+        report.parent.mkdir(parents=True)
+        report.write_text(json.dumps({
+            "completed_ids": ["case-1"], "resolved_ids": ["case-1"],
+            "unresolved_ids": [], "error_ids": [], "infra_failure_ids": [],
+        }), encoding="utf-8")
+        return type("Completed", (), {"returncode": 0})()
+
+    monkeypatch.setattr("tools.jeviphy_product_batch.subprocess.run", run)
+    record = evaluate_generated_arm(
+        tmp_path, tmp_path / "out",
+        ArmResult("graphify", "case-1", "completed", 0, True, 1.0), 30,
+    )
+
+    assert captured["command"][:4] == ["uvx", "--from", "swebench", "python"]
+    assert record.success is True
+    assert record.resolved is True

@@ -12,10 +12,13 @@ from tools.jeviphy_eval_contract import EvalCase, MemoryEvidence
 from tools.jeviphy_product_eval import (
     ArmRecord,
     PairRecord,
+    ProductArmRecord,
     RunPins,
     append_pair,
     balanced_order,
     completed_pairs,
+    evaluate_prediction,
+    load_prediction,
     run_command_arm,
     run_retrieval_pair,
     seal_journal,
@@ -26,6 +29,66 @@ import tools.jeviphy_product_eval as product_eval
 
 def arm(name="graphify", status="completed", success=True):
     return ArmRecord(name, status, success, 1.0, "a" * 64, "b" * 64)
+
+
+def test_trajectory_without_resolved_report_is_not_success(tmp_path):
+    prediction = tmp_path / "preds.json"
+    prediction.write_text(json.dumps({"case-1": {
+        "instance_id": "case-1", "model_name_or_path": "model", "model_patch": "diff"
+    }}), encoding="utf-8")
+    report = tmp_path / "results.json"
+    report.write_text(json.dumps({
+        "completed_ids": ["case-1"], "resolved_ids": [], "unresolved_ids": ["case-1"],
+        "error_ids": [], "infra_failure_ids": [],
+    }), encoding="utf-8")
+    trajectory = tmp_path / "case-1.traj.json"
+    trajectory.write_text(json.dumps({"info": {"model_stats": {
+        "api_calls": 2, "instance_cost": 0.01
+    }}}), encoding="utf-8")
+
+    record = evaluate_prediction(
+        "graphify", "case-1", prediction, report, trajectory,
+        generation_seconds=1.0, evaluation_seconds=2.0, run_root=tmp_path,
+    )
+    assert isinstance(record, ProductArmRecord)
+    assert (record.status, record.success, record.resolved) == ("completed", False, False)
+
+
+def test_missing_or_duplicate_prediction_fails_closed(tmp_path):
+    prediction = tmp_path / "preds.json"
+    prediction.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="exactly one prediction"):
+        load_prediction(prediction, "case-1")
+
+    prediction.write_text(json.dumps([
+        {"instance_id": "case-1", "model_name_or_path": "m", "model_patch": "a"},
+        {"instance_id": "case-1", "model_name_or_path": "m", "model_patch": "b"},
+    ]), encoding="utf-8")
+    with pytest.raises(ValueError, match="exactly one prediction"):
+        load_prediction(prediction, "case-1")
+
+
+def test_evaluator_failure_is_infrastructure_failure(tmp_path):
+    prediction = tmp_path / "preds.json"
+    prediction.write_text(json.dumps({"case-1": {
+        "instance_id": "case-1", "model_name_or_path": "model", "model_patch": "patch"
+    }}), encoding="utf-8")
+    report = tmp_path / "results.json"
+    report.write_text(json.dumps({
+        "completed_ids": [], "resolved_ids": [], "unresolved_ids": [],
+        "error_ids": ["case-1"], "infra_failure_ids": ["case-1"],
+    }), encoding="utf-8")
+    trajectory = tmp_path / "case-1.traj.json"
+    trajectory.write_text(json.dumps({"info": {"model_stats": {
+        "api_calls": 1, "instance_cost": 0.02
+    }}}), encoding="utf-8")
+
+    record = evaluate_prediction(
+        "jeviphy", "case-1", prediction, report, trajectory,
+        generation_seconds=1.0, evaluation_seconds=2.0, run_root=tmp_path,
+    )
+    assert record.status == "infrastructure_failed"
+    assert record.success is False
 
 
 def pair(case_id="case-1"):

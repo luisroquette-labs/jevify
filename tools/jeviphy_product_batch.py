@@ -13,7 +13,13 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from tools.jeviphy_product_eval import validate_live_limits
+from tools.jeviphy_product_eval import (
+    ProductArmRecord,
+    evaluate_prediction,
+    sha256_bytes,
+    validate_live_limits,
+)
+from tools.jeviphy_product_dataset import validate_arm_datasets
 
 
 INFRASTRUCTURE_MARKERS = (
@@ -181,13 +187,165 @@ def run_one(
     )
 
 
-def _append_result(path: Path, result: ArmResult) -> None:
+def _append_product_record(path: Path, record: ProductArmRecord) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     with os.fdopen(descriptor, "a", encoding="utf-8") as stream:
-        stream.write(json.dumps(asdict(result), sort_keys=True) + "\n")
+        stream.write(json.dumps(asdict(record), sort_keys=True) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def load_product_journal(path: Path) -> list[ProductArmRecord]:
+    records: list[ProductArmRecord] = []
+    seen: set[tuple[str, str]] = set()
+    if not path.exists():
+        return records
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        try:
+            record = ProductArmRecord(**json.loads(line))
+        except (TypeError, json.JSONDecodeError) as error:
+            raise ValueError(f"invalid product journal line {line_number}") from error
+        key = (record.arm, record.instance_id)
+        if key in seen:
+            raise ValueError(f"duplicate product journal arm: {record.arm}/{record.instance_id}")
+        if record.cost_usd is None:
+            raise ValueError(f"product journal cost is uncertain: {record.arm}/{record.instance_id}")
+        try:
+            cost = Decimal(record.cost_usd)
+        except InvalidOperation as error:
+            raise ValueError(f"invalid product journal cost: {record.cost_usd}") from error
+        if not cost.is_finite() or cost < 0:
+            raise ValueError(f"negative product journal cost: {record.cost_usd}")
+        seen.add(key)
+        records.append(record)
+    return records
+
+
+def remaining_limits(
+    records: list[ProductArmRecord], max_agent_calls: int, max_cost_usd: Decimal
+) -> tuple[int, Decimal]:
+    costs: list[Decimal] = []
+    for record in records:
+        if record.cost_usd is None:
+            raise ValueError(f"product journal cost is uncertain: {record.arm}/{record.instance_id}")
+        try:
+            cost = Decimal(record.cost_usd)
+        except InvalidOperation as error:
+            raise ValueError(f"invalid product journal cost: {record.cost_usd}") from error
+        if not cost.is_finite() or cost < 0:
+            raise ValueError(f"invalid product journal cost: {record.cost_usd}")
+        costs.append(cost)
+    spent = sum(costs, Decimal("0"))
+    remaining_calls = max_agent_calls - len(records)
+    remaining_cost = max_cost_usd - spent
+    if remaining_calls < 1 or remaining_cost <= 0:
+        raise ValueError("approved provider limit is exhausted")
+    return remaining_calls, remaining_cost
+
+
+def _failed_product_record(result: ArmResult, output: Path) -> ProductArmRecord:
+    trajectory = _trajectory_path(output, result.instance_id)
+    cost: str | None = None
+    trajectory_hash = sha256_bytes(b"")
+    if trajectory.is_file():
+        trajectory_hash = sha256_bytes(trajectory.read_bytes())
+        try:
+            stats = json.loads(trajectory.read_text(encoding="utf-8"))["info"]["model_stats"]
+            raw_cost = stats.get("instance_cost")
+            cost = str(raw_cost) if raw_cost is not None else None
+        except (KeyError, TypeError, json.JSONDecodeError):
+            pass
+    return ProductArmRecord(
+        arm=result.arm,
+        instance_id=result.instance_id,
+        status=result.state,
+        success=False,
+        generation_seconds=result.elapsed_seconds,
+        evaluation_seconds=0,
+        prediction_sha256=sha256_bytes(b""),
+        patch_sha256=sha256_bytes(b""),
+        trajectory_sha256=trajectory_hash,
+        input_tokens=None,
+        output_tokens=None,
+        cost_usd=cost,
+        resolved=False,
+        diagnostic=result.diagnostic,
+    )
+
+
+def evaluate_generated_arm(
+    root: Path,
+    output_root: Path,
+    result: ArmResult,
+    timeout_seconds: int,
+) -> ProductArmRecord:
+    output = output_root / result.arm / result.instance_id
+    if result.state != "completed":
+        return _failed_product_record(result, output)
+    prediction = output / "preds.json"
+    trajectory = _trajectory_path(output, result.instance_id)
+    run_id = re.sub(r"[^A-Za-z0-9_.-]", "_", f"jeviphy-{result.arm}-{result.instance_id}")
+    evaluation_root = output / "official-evaluation"
+    if evaluation_root.exists():
+        raise ValueError(f"official evaluator directory already exists: {evaluation_root}")
+    evaluation_root.mkdir(mode=0o700, parents=True)
+    command = [
+        "uvx",
+        "--from",
+        "swebench",
+        "python",
+        "-m",
+        "swebench.harness.run_evaluation",
+        "--dataset_name",
+        str(root / f"{result.arm}-train"),
+        "--split",
+        "train",
+        "--instance_ids",
+        result.instance_id,
+        "--predictions_path",
+        str(prediction),
+        "--max_workers",
+        "1",
+        "--run_id",
+        run_id,
+    ]
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=evaluation_root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        elapsed = round(time.monotonic() - started, 3)
+        failed = _failed_product_record(
+            ArmResult(result.arm, result.instance_id, "infrastructure_failed", 124, True,
+                      result.elapsed_seconds, "official evaluator timed out"),
+            output,
+        )
+        return ProductArmRecord(**{**asdict(failed), "evaluation_seconds": elapsed})
+    elapsed = round(time.monotonic() - started, 3)
+    report = evaluation_root / "logs" / "evaluation" / run_id / "results.json"
+    if completed.returncode != 0 or not report.is_file():
+        failed = _failed_product_record(
+            ArmResult(result.arm, result.instance_id, "infrastructure_failed", completed.returncode,
+                      True, result.elapsed_seconds, "official evaluator failed"),
+            output,
+        )
+        return ProductArmRecord(**{**asdict(failed), "evaluation_seconds": elapsed})
+    return evaluate_prediction(
+        result.arm,
+        result.instance_id,
+        prediction,
+        report,
+        trajectory,
+        generation_seconds=result.elapsed_seconds,
+        evaluation_seconds=elapsed,
+        run_root=output_root,
+    )
 
 
 def run_batch(
@@ -197,26 +355,91 @@ def run_batch(
     *,
     timeout_seconds: int = 2100,
     output_root: Path | None = None,
-) -> list[ArmResult]:
+    max_new_arms: int = 12,
+    max_agent_calls: int | None = None,
+    max_cost_usd: Decimal | None = None,
+) -> list[ProductArmRecord]:
     output_root = output_root or root / "isolated"
-    progress = output_root / "run-results.jsonl"
-    results: list[ArmResult] = []
+    progress = output_root / "product-arms.jsonl"
+    prior = load_product_journal(progress)
+    completed_keys = {(record.arm, record.instance_id) for record in prior}
+    results = list(prior)
+    new_count = 0
     for index, instance_id in enumerate(instance_ids):
         order = ("graphify", "jeviphy") if index % 2 == 0 else ("jeviphy", "graphify")
         for arm in order:
+            if (arm, instance_id) in completed_keys:
+                continue
+            if new_count >= max_new_arms:
+                return results
+            if max_agent_calls is not None and max_cost_usd is not None:
+                calls, cost = remaining_limits(results, max_agent_calls, max_cost_usd)
+                os.environ["MSWEA_GLOBAL_CALL_LIMIT"] = str(calls)
+                os.environ["MSWEA_GLOBAL_COST_LIMIT"] = format(cost, "f")
+            arm_output = output_root / arm / instance_id
+            if arm_output.exists() and any(arm_output.iterdir()):
+                raise ValueError(f"unjournaled arm output already exists: {arm_output}")
             result = run_one(root, output_root, arm, instance_id, api_key, timeout_seconds)
-            results.append(result)
-            _append_result(progress, result)
-            if result.state == "infrastructure_failed":
+            record = evaluate_generated_arm(root, output_root, result, timeout_seconds)
+            _append_product_record(progress, record)
+            results.append(record)
+            completed_keys.add((arm, instance_id))
+            new_count += 1
+            if record.status == "infrastructure_failed":
                 raise RuntimeError(
-                    f"infrastructure failure in {arm}/{instance_id}: {result.diagnostic}"
+                    f"infrastructure failure in {arm}/{instance_id}: {record.diagnostic}"
                 )
-
-    output = output_root / "run-results.json"
-    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-        json.dump([asdict(result) for result in results], stream, indent=2, sort_keys=True)
     return results
+
+
+def seal_product_journal(
+    journal: Path,
+    output: Path,
+    *,
+    expected_ids: list[str],
+    strata: dict[str, str],
+    pins: dict,
+) -> dict:
+    records = load_product_journal(journal)
+    by_key = {(record.arm, record.instance_id): record for record in records}
+    expected = {(arm, case_id) for case_id in expected_ids for arm in ("graphify", "jeviphy")}
+    if set(by_key) != expected:
+        raise ValueError("product journal does not contain the exact expected 240 arms")
+    pairs = []
+    for case_id in expected_ids:
+        baseline = by_key[("graphify", case_id)]
+        candidate = by_key[("jeviphy", case_id)]
+        baseline_arm = {
+            "status": baseline.status,
+            "success": baseline.success,
+            "duration_ms": (baseline.generation_seconds + baseline.evaluation_seconds) * 1000,
+        }
+        candidate_arm = {
+            "status": candidate.status,
+            "success": candidate.success,
+            "duration_ms": (candidate.generation_seconds + candidate.evaluation_seconds) * 1000,
+        }
+        if baseline.input_tokens is not None and candidate.input_tokens is not None:
+            baseline_arm["input_tokens"] = baseline.input_tokens
+            candidate_arm["input_tokens"] = candidate.input_tokens
+        pairs.append({"pair": {
+            "case_id": case_id,
+            "stratum": strata[case_id],
+            "pass_index": 0,
+            "baseline": baseline_arm,
+            "jeviphy": candidate_arm,
+        }})
+    payload = {
+        "schema_version": 1,
+        "pins": pins,
+        "journal_sha256": sha256_bytes(journal.read_bytes()),
+        "product_records": pairs,
+    }
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(payload, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+    return payload
 
 
 def main() -> int:
@@ -228,6 +451,7 @@ def main() -> int:
     parser.add_argument("--allow-network-agent", action="store_true")
     parser.add_argument("--max-agent-calls", type=int, default=0)
     parser.add_argument("--max-cost-usd", type=float, default=0)
+    parser.add_argument("--max-new-arms", type=int, default=12)
     args = parser.parse_args()
 
     validate_live_limits(
@@ -236,11 +460,27 @@ def main() -> int:
         max_cost_usd=args.max_cost_usd,
     )
     instance_ids = json.loads(args.cases.read_text(encoding="utf-8"))
+    manifest_path = args.root / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    cases = {case["id"]: case for case in manifest["cases"]}
+    if set(instance_ids) != set(cases):
+        parser.error("cases must contain the complete frozen manifest set")
+    try:
+        dataset_hashes = validate_arm_datasets(
+            args.root / "graphify-train",
+            args.root / "jeviphy-train",
+            expected_ids=set(instance_ids),
+            manifest_gold_symbols={key: value.get("gold_symbols", []) for key, value in cases.items()},
+        )
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        parser.error(str(error))
     required_calls = len(instance_ids) * 2
     if required_calls > args.max_agent_calls:
         parser.error(f"{required_calls} arms exceed --max-agent-calls={args.max_agent_calls}")
     if args.timeout_seconds < 1:
         parser.error("--timeout-seconds must be positive")
+    if not 1 <= args.max_new_arms <= 12:
+        parser.error("--max-new-arms must be between 1 and 12")
     try:
         required_cost = required_openrouter_budget(
             args.root / "mini-openrouter.yaml", required_calls
@@ -257,25 +497,54 @@ def main() -> int:
         parser.error("JEVIPHY_OPENROUTER_API_KEY is required")
 
     output_root = args.output_dir or args.root / "isolated"
-    if any((output_root / name).exists() for name in ("run-results.jsonl", "run-results.json")):
-        parser.error(f"output directory contains an earlier run: {output_root}")
+    candidate_repo = Path(__file__).resolve().parents[1]
+    if subprocess.check_output(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=candidate_repo,
+        text=True,
+    ).strip():
+        parser.error("Jeviphy checkout must be clean before a benchmark run")
+    candidate_sha = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=candidate_repo, text=True
+    ).strip()
+    pins = {
+        "manifest_sha256": sha256_bytes(manifest_path.read_bytes()),
+        "graphify_commit": manifest["graphify_commit"],
+        "jeviphy_commit": candidate_sha,
+        "graphify_dataset_sha256": dataset_hashes.graphify_sha256,
+        "jeviphy_dataset_sha256": dataset_hashes.jeviphy_sha256,
+    }
+    pins_path = output_root / "run-pins.json"
+    if pins_path.exists() and json.loads(pins_path.read_text(encoding="utf-8")) != pins:
+        parser.error("run pins differ from the existing run")
+    pins_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    pins_path.write_text(json.dumps(pins, sort_keys=True), encoding="utf-8")
+    pins_path.chmod(0o600)
     metadata = output_root / "approved-limits.json"
     metadata.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    metadata.write_text(
-        json.dumps(
-            {"max_agent_calls": args.max_agent_calls, "max_cost_usd": args.max_cost_usd},
-            sort_keys=True,
-        ),
-        encoding="utf-8",
-    )
+    limits = {"max_agent_calls": args.max_agent_calls, "max_cost_usd": str(args.max_cost_usd)}
+    if metadata.exists() and json.loads(metadata.read_text(encoding="utf-8")) != limits:
+        parser.error("approved limits differ from the existing run")
+    metadata.write_text(json.dumps(limits, sort_keys=True), encoding="utf-8")
     metadata.chmod(0o600)
-    run_batch(
+    records = run_batch(
         args.root,
         instance_ids,
         api_key,
         timeout_seconds=args.timeout_seconds,
         output_root=output_root,
+        max_new_arms=args.max_new_arms,
+        max_agent_calls=args.max_agent_calls,
+        max_cost_usd=Decimal(str(args.max_cost_usd)),
     )
+    if len(records) == required_calls:
+        seal_product_journal(
+            output_root / "product-arms.jsonl",
+            output_root / "product-report.json",
+            expected_ids=instance_ids,
+            strata={key: value["stratum"] for key, value in cases.items()},
+            pins=pins,
+        )
     return 0
 
 
