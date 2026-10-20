@@ -1,10 +1,15 @@
 import json
 import os
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from tools.jeviphy_product_batch import inspect_swebench_output, run_batch
+from tools.jeviphy_product_batch import (
+    inspect_swebench_output,
+    required_openrouter_budget,
+    run_batch,
+)
 
 
 def _write_status(output: Path, status: str, instance_id: str = "case-1") -> None:
@@ -27,6 +32,7 @@ def test_zero_exit_with_image_build_error_is_infrastructure_failure(tmp_path):
 
     assert result.state == "infrastructure_failed"
     assert result.trajectory is False
+    assert result.diagnostic is not None
     assert "ImageBuildError" in result.diagnostic
     assert "billing cycle spend limit" in result.diagnostic
 
@@ -91,7 +97,7 @@ def test_agent_limit_with_trajectory_is_a_failed_attempt(tmp_path):
 def test_batch_stops_after_first_infrastructure_failure(tmp_path, monkeypatch):
     calls = []
 
-    def failed_arm(root, arm, instance_id, api_key, timeout_seconds):
+    def failed_arm(root, output_root, arm, instance_id, api_key, timeout_seconds):
         calls.append((arm, instance_id))
         from tools.jeviphy_product_batch import ArmResult
 
@@ -102,5 +108,30 @@ def test_batch_stops_after_first_infrastructure_failure(tmp_path, monkeypatch):
         run_batch(tmp_path, ["case-1", "case-2"], "secret", timeout_seconds=1)
 
     assert calls == [("graphify", "case-1")]
-    progress = [json.loads(line) for line in (tmp_path / "isolated/run-results.jsonl").read_text().splitlines()]
+    progress = [
+        json.loads(line)
+        for line in (tmp_path / "isolated/run-results.jsonl").read_text().splitlines()
+    ]
     assert progress[0]["state"] == "infrastructure_failed"
+
+
+def test_batch_writes_to_separate_output_root(tmp_path, monkeypatch):
+    output_root = tmp_path / "fresh-run"
+
+    def completed_arm(root, output_root, arm, instance_id, api_key, timeout_seconds):
+        from tools.jeviphy_product_batch import ArmResult
+
+        return ArmResult(arm, instance_id, "completed", 0, True, 0.1)
+
+    monkeypatch.setattr("tools.jeviphy_product_batch.run_one", completed_arm)
+    run_batch(tmp_path, ["case-1"], "secret", timeout_seconds=1, output_root=output_root)
+
+    assert (output_root / "run-results.jsonl").exists()
+    assert not (tmp_path / "isolated").exists()
+
+
+def test_required_openrouter_budget_uses_per_agent_limit(tmp_path):
+    config = tmp_path / "mini-openrouter.yaml"
+    config.write_text("agent:\n  cost_limit: 0.08\nmodel:\n  name: example\n", encoding="utf-8")
+
+    assert required_openrouter_budget(config, 186) == Decimal("14.88")
