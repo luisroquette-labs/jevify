@@ -3905,7 +3905,9 @@ def dispatch_command(cmd: str) -> None:
         # would run _detect_incremental and drop unchanged code files from the AST
         # pass; instead we keep incremental_mode = False so all code files are
         # scanned, while merge_existing_graph below ensures build_merge still runs.
-        merge_existing_graph = incremental_mode or (code_only and existing_graph_path.exists())
+        merge_existing_graph = incremental_mode or (
+            code_only and existing_graph_path.exists() and not force
+        )
         if force and code_only and existing_graph_path.exists():
             print(
                 "[graphify extract] --force --code-only: full AST re-scan, "

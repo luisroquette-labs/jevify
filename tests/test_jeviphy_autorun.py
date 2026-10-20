@@ -147,6 +147,14 @@ def test_invalid_repaired_graph_is_rejected_without_retry(repo_with_graph, monke
     assert len(calls) == 1
 
 
+def test_corrupt_graph_real_force_rebuild(repo_with_graph):
+    repo, graph = repo_with_graph
+    graph.write_text("{", encoding="utf-8")
+    context = ensure_context(repo)
+    assert context.graph == graph.resolve()
+    assert inspect_context(repo).status == "ready"
+
+
 def test_explicit_question_wins(repo_with_graph, monkeypatch):
     _, graph_path = repo_with_graph
     graph = autorun._read_graph(str(graph_path))

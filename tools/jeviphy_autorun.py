@@ -77,10 +77,17 @@ def git_root(cwd: Path) -> Path:
     return Path(_git_output(cwd.resolve(), "rev-parse", "--show-toplevel")).resolve()
 
 
+def _git_identity(cwd: Path) -> tuple[Path, str]:
+    output = _git_output(cwd.resolve(), "rev-parse", "--show-toplevel", "HEAD").splitlines()
+    if len(output) != 2:
+        raise ContextError(f"{cwd.resolve()} is not inside a Git worktree")
+    return Path(output[0]).resolve(), output[1]
+
+
 def inspect_context(
     cwd: Path, *, repo: Path | None = None, graph: Path | None = None,
 ) -> ContextState:
-    resolved_repo = git_root(repo if repo is not None else cwd)
+    resolved_repo, head = _git_identity(repo if repo is not None else cwd)
     resolved_graph = (
         graph if graph is not None and graph.is_absolute()
         else resolved_repo / (graph or Path("graphify-out/graph.json"))
@@ -88,7 +95,7 @@ def inspect_context(
     context = InvocationContext(
         repo=resolved_repo,
         graph=resolved_graph,
-        head=_git_output(resolved_repo, "rev-parse", "HEAD"),
+        head=head,
     )
     if not resolved_graph.is_file():
         return ContextState("missing", context, diagnostic="graph is missing")
@@ -96,7 +103,7 @@ def inspect_context(
         raw = json.loads(resolved_graph.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             raise ValueError("graph root is not an object")
-        loaded = _read_graph(str(resolved_graph))
+        loaded = _read_graph(str(resolved_graph), query_mode=True)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return ContextState("corrupt", context, diagnostic=str(exc))
     persisted = raw.get("built_at_commit")
