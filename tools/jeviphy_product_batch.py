@@ -347,7 +347,6 @@ def evaluate_generated_arm(
 ) -> ProductArmRecord:
     output = output_root / result.arm / result.instance_id
     if result.state != "completed":
-        _prune_docker()
         return _failed_product_record(result, output)
     prediction = output / "preds.json"
     trajectory = _trajectory_path(output, result.instance_id)
@@ -398,8 +397,6 @@ def evaluate_generated_arm(
             output,
         )
         return ProductArmRecord(**{**asdict(failed), "evaluation_seconds": elapsed})
-    finally:
-        _prune_docker()
     elapsed = round(time.monotonic() - started, 3)
     report = evaluation_root / "logs" / "evaluation" / run_id / "results.json"
     if not report.is_file():
@@ -468,6 +465,12 @@ def run_batch(
             results.append(record)
             completed_keys.add((arm, instance_id))
             new_count += 1
+            pair_complete = all(
+                (candidate, instance_id) in completed_keys
+                for candidate in ("graphify", "jeviphy")
+            )
+            if pair_complete or record.status == "infrastructure_failed":
+                _prune_docker()
             if record.status == "infrastructure_failed":
                 raise RuntimeError(
                     f"infrastructure failure in {arm}/{instance_id}: {record.diagnostic}"

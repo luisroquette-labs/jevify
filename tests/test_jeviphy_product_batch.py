@@ -120,6 +120,7 @@ def test_agent_limit_with_trajectory_is_a_failed_attempt(tmp_path):
 
 def test_batch_stops_after_first_infrastructure_failure(tmp_path, monkeypatch):
     calls = []
+    pruned = []
 
     def failed_arm(root, output_root, arm, instance_id, api_key, timeout_seconds):
         calls.append((arm, instance_id))
@@ -128,6 +129,7 @@ def test_batch_stops_after_first_infrastructure_failure(tmp_path, monkeypatch):
         return ArmResult(arm, instance_id, "infrastructure_failed", 0, False, 0.1, "quota")
 
     monkeypatch.setattr("tools.jeviphy_product_batch.run_one", failed_arm)
+    monkeypatch.setattr("tools.jeviphy_product_batch._prune_docker", lambda: pruned.append(True))
     monkeypatch.setattr(
         "tools.jeviphy_product_batch.evaluate_generated_arm",
         lambda root, output_root, result, timeout, candidate_sha: _product_record(
@@ -146,6 +148,7 @@ def test_batch_stops_after_first_infrastructure_failure(tmp_path, monkeypatch):
         for line in (tmp_path / "isolated/product-arms.jsonl").read_text().splitlines()
     ]
     assert progress[0]["status"] == "infrastructure_failed"
+    assert pruned == [True]
 
 
 def test_batch_writes_to_separate_output_root(tmp_path, monkeypatch):
@@ -301,6 +304,7 @@ def _product_record(arm, instance_id, *, status="completed", cost="0.02"):
 
 def test_two_chunks_keep_per_arm_call_limit_and_reduce_total_cost(tmp_path, monkeypatch):
     seen = []
+    pruned = []
 
     def completed_arm(root, output_root, arm, instance_id, api_key, timeout_seconds):
         from tools.jeviphy_product_batch import ArmResult
@@ -309,6 +313,7 @@ def test_two_chunks_keep_per_arm_call_limit_and_reduce_total_cost(tmp_path, monk
         return ArmResult(arm, instance_id, "completed", 0, True, 0.1)
 
     monkeypatch.setattr("tools.jeviphy_product_batch.run_one", completed_arm)
+    monkeypatch.setattr("tools.jeviphy_product_batch._prune_docker", lambda: pruned.append(True))
     monkeypatch.setattr(
         "tools.jeviphy_product_batch.evaluate_generated_arm",
         lambda root, output_root, result, timeout, candidate_sha: _product_record(
@@ -321,6 +326,7 @@ def test_two_chunks_keep_per_arm_call_limit_and_reduce_total_cost(tmp_path, monk
         max_agent_calls=4, max_cost_usd=Decimal("0.10"),
         candidate_sha="a" * 40,
     )
+    assert pruned == []
     run_batch(
         tmp_path, ["case-1"], "secret", output_root=output, max_new_arms=1,
         max_agent_calls=4, max_cost_usd=Decimal("0.10"),
@@ -328,6 +334,7 @@ def test_two_chunks_keep_per_arm_call_limit_and_reduce_total_cost(tmp_path, monk
     )
 
     assert seen == [("80", "0.10"), ("80", "0.08")]
+    assert pruned == [True]
 
 
 def test_uncertain_journal_cost_blocks_resume(tmp_path):
@@ -395,7 +402,6 @@ def test_completed_generation_uses_official_swebench_report(tmp_path, monkeypatc
     )
 
     assert captured["command"][:4] == ["uvx", "--from", "swebench==5.0.2", "python"]
-    assert captured["pruned"] is True
     assert captured["command"][-1].startswith("jeviphy-aaaaaaaaaaaa-graphify-")
     assert record.success is True
     assert record.resolved is True
@@ -412,7 +418,7 @@ def test_official_eval_rejects_unpinned_candidate_sha(tmp_path):
         )
 
 
-def test_failed_generation_prunes_docker(tmp_path, monkeypatch):
+def test_failed_generation_defers_prune_to_batch_pair_boundary(tmp_path, monkeypatch):
     pruned = []
     monkeypatch.setattr("tools.jeviphy_product_batch._prune_docker", lambda: pruned.append(True))
 
@@ -425,4 +431,4 @@ def test_failed_generation_prunes_docker(tmp_path, monkeypatch):
     )
 
     assert record.status == "failed"
-    assert pruned == [True]
+    assert pruned == []
