@@ -69,6 +69,13 @@ def required_openrouter_budget(config: Path, agent_calls: int) -> Decimal:
     return per_call * agent_calls
 
 
+def configured_step_limit(config: Path) -> int:
+    match = re.search(r"(?m)^\s{2}step_limit:\s*([0-9]+)\s*$", config.read_text(encoding="utf-8"))
+    if not match or int(match.group(1)) < 1:
+        raise ValueError(f"agent.step_limit must be positive in {config}")
+    return int(match.group(1))
+
+
 def select_canary_case(instance_ids: list[str], manifest_sha256: str) -> str:
     if not instance_ids or len(instance_ids) != len(set(instance_ids)):
         raise ValueError("canary selection requires unique cases")
@@ -365,7 +372,10 @@ def run_batch(
     max_new_arms: int = 12,
     max_agent_calls: int | None = None,
     max_cost_usd: Decimal | None = None,
+    max_calls_per_arm: int = 80,
 ) -> list[ProductArmRecord]:
+    if max_calls_per_arm < 1:
+        raise ValueError("max_calls_per_arm must be positive")
     output_root = output_root or root / "isolated"
     progress = output_root / "product-arms.jsonl"
     prior = load_product_journal(progress)
@@ -380,8 +390,8 @@ def run_batch(
             if new_count >= max_new_arms:
                 return results
             if max_agent_calls is not None and max_cost_usd is not None:
-                calls, cost = remaining_limits(results, max_agent_calls, max_cost_usd)
-                os.environ["MSWEA_GLOBAL_CALL_LIMIT"] = str(calls)
+                _, cost = remaining_limits(results, max_agent_calls, max_cost_usd)
+                os.environ["MSWEA_GLOBAL_CALL_LIMIT"] = str(max_calls_per_arm)
                 os.environ["MSWEA_GLOBAL_COST_LIMIT"] = format(cost, "f")
             arm_output = output_root / arm / instance_id
             if arm_output.exists() and any(arm_output.iterdir()):
@@ -500,6 +510,7 @@ def main() -> int:
         required_cost = required_openrouter_budget(
             args.root / "mini-openrouter.yaml", required_calls
         )
+        max_calls_per_arm = configured_step_limit(args.root / "mini-openrouter.yaml")
     except (OSError, ValueError) as error:
         parser.error(str(error))
     if Decimal(str(args.max_cost_usd)) < required_cost:
@@ -551,6 +562,7 @@ def main() -> int:
         max_new_arms=args.max_new_arms,
         max_agent_calls=args.max_agent_calls,
         max_cost_usd=Decimal(str(args.max_cost_usd)),
+        max_calls_per_arm=max_calls_per_arm,
     )
     if len(records) == required_calls:
         seal_product_journal(

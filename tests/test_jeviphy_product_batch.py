@@ -7,6 +7,7 @@ import pytest
 
 from tools.jeviphy_product_batch import (
     ArmResult,
+    configured_step_limit,
     evaluate_generated_arm,
     inspect_swebench_output,
     load_product_journal,
@@ -151,9 +152,13 @@ def test_batch_writes_to_separate_output_root(tmp_path, monkeypatch):
 
 def test_required_openrouter_budget_uses_per_agent_limit(tmp_path):
     config = tmp_path / "mini-openrouter.yaml"
-    config.write_text("agent:\n  cost_limit: 0.08\nmodel:\n  name: example\n", encoding="utf-8")
+    config.write_text(
+        "agent:\n  cost_limit: 0.08\n  step_limit: 80\nmodel:\n  name: example\n",
+        encoding="utf-8",
+    )
 
     assert required_openrouter_budget(config, 186) == Decimal("14.88")
+    assert configured_step_limit(config) == 80
 
 
 def test_canary_selection_is_deterministic_and_order_independent():
@@ -197,7 +202,7 @@ def _product_record(arm, instance_id, *, status="completed", cost="0.02"):
     )
 
 
-def test_two_chunks_receive_cumulative_remaining_limits(tmp_path, monkeypatch):
+def test_two_chunks_keep_per_arm_call_limit_and_reduce_total_cost(tmp_path, monkeypatch):
     seen = []
 
     def completed_arm(root, output_root, arm, instance_id, api_key, timeout_seconds):
@@ -223,7 +228,7 @@ def test_two_chunks_receive_cumulative_remaining_limits(tmp_path, monkeypatch):
         max_agent_calls=4, max_cost_usd=Decimal("0.10"),
     )
 
-    assert seen == [("4", "0.10"), ("3", "0.08")]
+    assert seen == [("80", "0.10"), ("80", "0.08")]
 
 
 def test_uncertain_journal_cost_blocks_resume(tmp_path):
