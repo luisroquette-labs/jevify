@@ -466,7 +466,9 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=int, default=2100)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--allow-network-agent", action="store_true")
-    parser.add_argument("--max-agent-calls", type=int, default=0)
+    parser.add_argument(
+        "--max-agent-arms", "--max-agent-calls", dest="max_agent_calls", type=int, default=0
+    )
     parser.add_argument("--max-cost-usd", type=float, default=0)
     parser.add_argument("--max-new-arms", type=int, default=12)
     parser.add_argument("--canary", action="store_true")
@@ -501,7 +503,7 @@ def main() -> int:
     run_ids = [select_canary_case(instance_ids, manifest_sha256)] if args.canary else instance_ids
     required_calls = len(run_ids) * 2
     if required_calls > args.max_agent_calls:
-        parser.error(f"{required_calls} arms exceed --max-agent-calls={args.max_agent_calls}")
+        parser.error(f"{required_calls} arms exceed --max-agent-arms={args.max_agent_calls}")
     if args.timeout_seconds < 1:
         parser.error("--timeout-seconds must be positive")
     if not 1 <= args.max_new_arms <= 12:

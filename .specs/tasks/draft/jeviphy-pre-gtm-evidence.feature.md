@@ -85,14 +85,14 @@ The evaluator consumes the `preds.json` produced by mini-swe-agent and invokes `
 The default path remains offline. A live run requires all of:
 
 - `--allow-network-agent`;
-- positive `--max-agent-calls` and `--max-cost-usd`;
+- positive `--max-agent-arms` and `--max-cost-usd`;
 - a fresh output directory;
 - a project-scoped provider credential;
 - explicit approval in the current conversation before execution.
 
 The runner sets mini-swe-agent global call and cost limits from the same ceilings. Provider and Docker failures stop the serial run without retrying an uncertain write.
 
-Call and cost ceilings are cumulative across resume-safe chunks. Before each chunk, the runner verifies the append-only journal, subtracts completed calls and reported spend from the single approved totals, and passes only the remaining allowance to mini-swe-agent. Missing, malformed, negative, or uncertain cost data blocks resume. Restarting a process never resets the user's approved budget.
+Arm and cost ceilings are cumulative across resume-safe chunks. Before each arm, the runner verifies the append-only journal, subtracts completed arms and reported spend from the single approved totals, passes the remaining cost allowance to mini-swe-agent, and applies the frozen per-arm step limit as the internal model-call ceiling. Missing, malformed, negative, or uncertain cost data blocks resume. Restarting a process never resets the user's approved budget.
 
 ### PG5 — Remote compute
 

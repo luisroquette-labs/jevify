@@ -188,11 +188,11 @@ Map `generation_seconds + evaluation_seconds` to `duration_ms`. Copy token count
 
 - [ ] **Step 7: Enforce provider and global limits**
 
-Treat the validated CLI ceilings as totals for the complete candidate run. Before every paid arm, count completed paid arms and sum their decimal `cost_usd` values from the validated journal. Compute `remaining_calls = max_agent_calls - completed_calls` and `remaining_cost = max_cost_usd - spent_cost`; reject missing, malformed, negative, duplicated, or uncertain cost records before starting another arm. Set `MSWEA_GLOBAL_CALL_LIMIT` and `MSWEA_GLOBAL_COST_LIMIT` to those remaining values, never the original totals. Refuse an existing `preds.json`, evaluator directory, or sealed report in a fresh run root. Preserve resume only through the append-only arm journal with identical pins.
+Treat the validated CLI ceilings as totals for the complete candidate run. Before every paid arm, count completed paid arms and sum their decimal `cost_usd` values from the validated journal. Compute `remaining_arms = max_agent_arms - completed_arms` and `remaining_cost = max_cost_usd - spent_cost`; reject missing, malformed, negative, duplicated, or uncertain cost records before starting another arm. Set `MSWEA_GLOBAL_CALL_LIMIT` to the frozen per-arm `agent.step_limit` and `MSWEA_GLOBAL_COST_LIMIT` to the remaining total cost. Refuse an existing `preds.json`, evaluator directory, or sealed report in a fresh run root. Preserve resume only through the append-only arm journal with identical pins.
 
 Add `--max-new-arms` with a positive upper bound of 12. Count only arms absent from the validated journal. Stop successfully after the bound, flush and fsync the journal, and leave final sealing unavailable until the expected 240-arm set is complete.
 
-Add a regression test that runs two simulated chunks and proves the second receives the original ceiling minus the first chunk's calls and decimal cost. A journal arm without provider cost must block the next paid chunk rather than assuming zero.
+Add a regression test that runs two simulated chunks and proves both receive the frozen per-arm call ceiling while the second receives the original total cost ceiling minus the first arm's decimal cost. A journal arm without provider cost must block the next paid chunk rather than assuming zero.
 
 - [ ] **Step 8: Validate and commit**
 
@@ -436,11 +436,11 @@ In the Codespace, validate both arm datasets, then print only: candidate SHA, ma
 
 - [ ] **Step 2: Run a two-arm live canary under its own approval**
 
-Before the full run, request approval for exactly two paid calls and the configured two-arm maximum. Run one case chosen by a manifest hash before outputs are viewed. Require both predictions, both official evaluations, a sealed pair, and a scorecard-readable record. Discard the canary from the 120-case denominator and use a new output directory for the candidate run.
+Before the full run, request approval for exactly two paid agent arms, up to 160 internal model calls under the frozen 80-step limit, and the configured two-arm maximum of `$0.16`. Run one case chosen by a manifest hash before outputs are viewed. Require both predictions, both official evaluations, a sealed pair, and a scorecard-readable record. Discard the canary from the 120-case denominator and use a new output directory for the candidate run.
 
 - [ ] **Step 3: Stop at the full paid-use boundary**
 
-Obtain current-conversation approval for exactly 240 calls and the calculated maximum. At the current `agent.cost_limit: 0.08`, the ceiling is `$19.20`; recalculate from the frozen configuration rather than hard-coding it. Do not infer approval from the canary, an earlier conversation, or a GitHub/AWS compute authorization.
+Obtain current-conversation approval for exactly 240 paid agent arms, up to 19,200 internal model calls under the frozen 80-step limit, and the calculated maximum. At the current `agent.cost_limit: 0.08`, the ceiling is `$19.20`; recalculate from the frozen configuration rather than hard-coding it. Do not infer approval from the canary, an earlier conversation, or a GitHub/AWS compute authorization.
 
 - [ ] **Step 4: Run the serial generation and official evaluation**
 
@@ -452,7 +452,7 @@ uv run --frozen python -m tools.jeviphy_product_batch \
   --cases "$PRIVATE_ROOT/all-cases.json" \
   --output-dir "$PRIVATE_OUTPUT" \
   --allow-network-agent \
-  --max-agent-calls 240 \
+  --max-agent-arms 240 \
   --max-cost-usd 19.20 \
   --max-new-arms 12
 ```
