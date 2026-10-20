@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from decimal import Decimal
 from pathlib import Path
 
@@ -7,10 +8,12 @@ import pytest
 
 from tools.jeviphy_product_batch import (
     ArmResult,
+    configured_model_name,
     configured_step_limit,
     evaluate_generated_arm,
     inspect_swebench_output,
     load_product_journal,
+    main as product_main,
     remaining_limits,
     required_openrouter_budget,
     run_batch,
@@ -153,12 +156,13 @@ def test_batch_writes_to_separate_output_root(tmp_path, monkeypatch):
 def test_required_openrouter_budget_uses_per_agent_limit(tmp_path):
     config = tmp_path / "mini-openrouter.yaml"
     config.write_text(
-        "agent:\n  cost_limit: 0.08\n  step_limit: 80\nmodel:\n  name: example\n",
+        "agent:\n  cost_limit: 0.08\n  step_limit: 80\nmodel:\n  model_name: example\n",
         encoding="utf-8",
     )
 
     assert required_openrouter_budget(config, 186) == Decimal("14.88")
     assert configured_step_limit(config) == 80
+    assert configured_model_name(config) == "example"
 
 
 def test_canary_selection_is_deterministic_and_order_independent():
@@ -171,6 +175,51 @@ def test_canary_selection_is_deterministic_and_order_independent():
 def test_canary_selection_rejects_duplicate_cases():
     with pytest.raises(ValueError, match="unique cases"):
         select_canary_case(["case-1", "case-1"], "f" * 64)
+
+
+def test_preview_needs_no_provider_key_and_creates_no_output(tmp_path, monkeypatch, capsys):
+    from tools.jeviphy_product_dataset import DatasetHashes
+
+    root = tmp_path / "private"
+    root.mkdir()
+    (root / "manifest.json").write_text(json.dumps({
+        "graphify_commit": "b" * 40,
+        "cases": [{"id": "case-1", "gold_symbols": [], "stratum": "valid_source"}],
+    }))
+    cases = root / "all-cases.json"
+    cases.write_text('["case-1"]')
+    (root / "mini-openrouter.yaml").write_text(
+        'agent:\n  cost_limit: 0.08\n  step_limit: 80\nmodel:\n  model_name: "example/model"\n'
+    )
+    monkeypatch.delenv("JEVIPHY_OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "tools.jeviphy_product_batch.validate_arm_datasets",
+        lambda *args, **kwargs: DatasetHashes("1" * 64, "2" * 64),
+    )
+
+    def check_output(command, **kwargs):
+        if command[:2] == ["git", "status"]:
+            return ""
+        if command[:2] == ["git", "rev-parse"]:
+            return "a" * 40 + "\n"
+        if command == ["docker", "--version"]:
+            return "Docker version test\n"
+        raise AssertionError(command)
+
+    monkeypatch.setattr("tools.jeviphy_product_batch.subprocess.check_output", check_output)
+    output = tmp_path / "new-output"
+    monkeypatch.setattr(sys, "argv", [
+        "jeviphy-product-batch", "--root", str(root), "--cases", str(cases),
+        "--output-dir", str(output), "--max-agent-arms", "2",
+        "--max-cost-usd", "0.16", "--max-new-arms", "2", "--canary", "--preview",
+    ])
+
+    assert product_main() == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["arm_count"] == 2
+    assert preview["maximum_internal_model_calls"] == 160
+    assert preview["selected_case"] == "case-1"
+    assert not output.exists()
 
 
 def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):

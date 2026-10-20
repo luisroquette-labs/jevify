@@ -34,3 +34,6 @@ uv run --frozen python -m tools.jeviphy_product_batch \
   --output-dir "$PRIVATE_OUTPUT" --allow-network-agent \
   --max-agent-arms 240 --max-cost-usd 19.20 --max-new-arms 12
 ```
+
+Add `--preview` to validate every input and print the frozen execution envelope
+without reading a provider key, creating the output directory, or making a paid call.

@@ -76,6 +76,16 @@ def configured_step_limit(config: Path) -> int:
     return int(match.group(1))
 
 
+def configured_model_name(config: Path) -> str:
+    match = re.search(
+        r'(?m)^\s{2}model_name:\s*["\']?([^"\'\s]+)["\']?\s*$',
+        config.read_text(encoding="utf-8"),
+    )
+    if not match:
+        raise ValueError(f"model.model_name is missing from {config}")
+    return match.group(1)
+
+
 def select_canary_case(instance_ids: list[str], manifest_sha256: str) -> str:
     if not instance_ids or len(instance_ids) != len(set(instance_ids)):
         raise ValueError("canary selection requires unique cases")
@@ -472,10 +482,11 @@ def main() -> int:
     parser.add_argument("--max-cost-usd", type=float, default=0)
     parser.add_argument("--max-new-arms", type=int, default=12)
     parser.add_argument("--canary", action="store_true")
+    parser.add_argument("--preview", action="store_true")
     args = parser.parse_args()
 
     validate_live_limits(
-        allow_network_agent=args.allow_network_agent,
+        allow_network_agent=args.allow_network_agent or args.preview,
         max_agent_calls=args.max_agent_calls,
         max_cost_usd=args.max_cost_usd,
     )
@@ -509,10 +520,12 @@ def main() -> int:
     if not 1 <= args.max_new_arms <= 12:
         parser.error("--max-new-arms must be between 1 and 12")
     try:
+        config_path = args.root / "mini-openrouter.yaml"
         required_cost = required_openrouter_budget(
-            args.root / "mini-openrouter.yaml", required_calls
+            config_path, required_calls
         )
-        max_calls_per_arm = configured_step_limit(args.root / "mini-openrouter.yaml")
+        max_calls_per_arm = configured_step_limit(config_path)
+        model_name = configured_model_name(config_path)
     except (OSError, ValueError) as error:
         parser.error(str(error))
     if Decimal(str(args.max_cost_usd)) < required_cost:
@@ -520,10 +533,6 @@ def main() -> int:
             f"worst-case OpenRouter spend is ${required_cost}; "
             f"--max-cost-usd={args.max_cost_usd} is too low"
         )
-    api_key = os.environ.get("JEVIPHY_OPENROUTER_API_KEY")
-    if not api_key:
-        parser.error("JEVIPHY_OPENROUTER_API_KEY is required")
-
     output_root = args.output_dir or args.root / "isolated"
     candidate_repo = Path(__file__).resolve().parents[1]
     if subprocess.check_output(
@@ -535,6 +544,32 @@ def main() -> int:
     candidate_sha = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=candidate_repo, text=True
     ).strip()
+    if args.preview:
+        if output_root.exists():
+            parser.error(f"preview output path already exists: {output_root}")
+        docker_version = subprocess.check_output(["docker", "--version"], text=True).strip()
+        preview = {
+            "arm_count": required_calls,
+            "candidate_sha": candidate_sha,
+            "case_count": len(run_ids),
+            "docker_version": docker_version,
+            "graphify_dataset_sha256": dataset_hashes.graphify_sha256,
+            "jeviphy_dataset_sha256": dataset_hashes.jeviphy_sha256,
+            "manifest_sha256": manifest_sha256,
+            "maximum_internal_model_calls": required_calls * max_calls_per_arm,
+            "maximum_total_cost_usd": format(required_cost, "f"),
+            "model": model_name,
+            "output_path": str(output_root),
+            "per_arm_cost_limit_usd": format(required_cost / required_calls, "f"),
+        }
+        if args.canary:
+            preview["selected_case"] = run_ids[0]
+        print(json.dumps(preview, sort_keys=True))
+        return 0
+
+    api_key = os.environ.get("JEVIPHY_OPENROUTER_API_KEY")
+    if not api_key:
+        parser.error("JEVIPHY_OPENROUTER_API_KEY is required")
     pins = {
         "manifest_sha256": manifest_sha256,
         "graphify_commit": manifest["graphify_commit"],
