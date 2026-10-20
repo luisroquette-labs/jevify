@@ -3,13 +3,14 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import networkx as nx
 import pytest
 from networkx.readwrite import json_graph
 
 from tools import jeviphy_autorun as autorun
-from tools.jeviphy_autorun import ContextError, ensure_context, inspect_context, select_question
+from tools.jeviphy_autorun import ContextError, auto, ensure_context, inspect_context, select_question
 
 
 def _commit(repo: Path) -> str:
@@ -220,3 +221,104 @@ def test_question_selection_is_stable_across_hash_seeds(repo_with_graph):
         for seed in range(20)
     }
     assert len(outputs) == 1
+
+
+def test_bare_auto_uses_current_repo_without_provider_key(
+    repo_with_graph, monkeypatch, capsys,
+):
+    repo, graph_path = repo_with_graph
+    (repo / "src").mkdir()
+    monkeypatch.setattr(autorun, "select_question", lambda *_args: "Where is run?")
+    monkeypatch.setattr(
+        "tools.jev_memory_pilot.query_unscoped_graphify",
+        lambda graph, question: f"answer:{graph.name}:{question}\n",
+    )
+    real_get = os.environ.get
+
+    def guarded_get(key, default=None):
+        if key == "JEV_MEMORY_PILOT_API_KEY":
+            raise AssertionError("default auto read provider key")
+        return real_get(key, default)
+
+    monkeypatch.setattr(os.environ, "get", guarded_get)
+    assert auto([], repo / "src") == 0
+    captured = capsys.readouterr()
+    assert captured.out == "Question: Where is run?\nanswer:graph.json:Where is run?\n"
+    assert captured.err == ""
+    assert graph_path.is_file()
+
+
+def test_auto_json_has_stable_envelope(repo_with_graph, monkeypatch, capsys):
+    repo, _ = repo_with_graph
+    monkeypatch.setattr("tools.jev_memory_pilot.query_unscoped_graphify",
+                        lambda *_args: "exact answer\n")
+    assert auto(["--question", "What calls run?", "--json"], repo) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "answer": "exact answer\n",
+        "graph": str((repo / "graphify-out/graph.json").resolve()),
+        "live_enrichment": "not_requested",
+        "mode": "graph_only",
+        "question": "What calls run?",
+        "repo": str(repo.resolve()),
+        "schema_version": 1,
+    }
+
+
+def test_ambiguous_or_mismatched_corpus_falls_back_once(
+    repo_with_graph, tmp_path, monkeypatch, capsys,
+):
+    repo, _ = repo_with_graph
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(json.dumps({"observations": [], "cases": [
+        {"id": "one", "question": "one"}, {"id": "two", "question": "two"},
+    ]}))
+    monkeypatch.setattr("tools.jev_memory_pilot.query_unscoped_graphify",
+                        lambda *_args: "fallback\n")
+    assert auto(["--question", "explicit", "--corpus", str(corpus)], repo) == 0
+    captured = capsys.readouterr()
+    assert captured.out.endswith("fallback\n")
+    assert captured.err == "memory_enrichment=skipped\n"
+
+
+def test_single_case_corpus_supplies_question_and_memory_mode(
+    repo_with_graph, tmp_path, monkeypatch, capsys,
+):
+    repo, _ = repo_with_graph
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(json.dumps({
+        "observations": [{"id": "o1", "project": "demo"}],
+        "cases": [{"id": "q1", "question": "Where is run?", "observation_ids": ["o1"]}],
+    }))
+    seen = []
+
+    def pilot(config):
+        seen.append(config)
+        return SimpleNamespace(answer="seeded\n", live_enrichment="not_requested",
+                               actual_cost=None, memory_applied=True)
+
+    monkeypatch.setattr("tools.jev_memory_pilot.run_pilot", pilot)
+    assert auto(["--corpus", str(corpus), "--json"], repo) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["question"] == "Where is run?"
+    assert payload["mode"] == "memory_offline"
+    assert seen[0].candidate_mode == "fast-source"
+
+
+def test_live_without_corpus_skips_without_key_read(repo_with_graph, monkeypatch, capsys):
+    repo, _ = repo_with_graph
+    monkeypatch.setattr("tools.jev_memory_pilot.query_unscoped_graphify",
+                        lambda *_args: "offline\n")
+    real_get = os.environ.get
+
+    def guarded_get(key, default=None):
+        if key == "JEV_MEMORY_PILOT_API_KEY":
+            raise AssertionError("live without corpus read provider key")
+        return real_get(key, default)
+
+    monkeypatch.setattr(os.environ, "get", guarded_get)
+    assert auto(["--question", "Where?", "--live", "--approved-paid-use",
+                 "--max-requests", "1"], repo) == 0
+    captured = capsys.readouterr()
+    assert captured.out.endswith("offline\n")
+    assert captured.err == "live_enrichment=skipped\n"

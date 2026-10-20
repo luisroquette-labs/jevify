@@ -6,7 +6,7 @@ import json
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -51,6 +51,17 @@ class ContextState:
     context: InvocationContext
     loaded_graph: nx.Graph | None = None
     diagnostic: str = ""
+
+
+@dataclass(frozen=True)
+class AutoResult:
+    schema_version: int
+    mode: Literal["graph_only", "memory_offline", "memory_live"]
+    repo: str
+    graph: str
+    question: str
+    live_enrichment: Literal["not_requested", "applied", "skipped"]
+    answer: str
 
 
 def _git_output(repo: Path, *args: str) -> str:
@@ -172,3 +183,104 @@ def select_question(graph: nx.Graph, graph_path: Path, question: str | None) -> 
     if not selected:
         raise ContextError("graph has no question signal; run graphify update .")
     return selected[0]["question"].strip()
+
+
+def _corpus_identity(path: Path) -> tuple[str, str, str]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or not isinstance(raw.get("cases"), list):
+        raise ValueError("corpus needs one case")
+    cases = raw["cases"]
+    observations = raw.get("observations")
+    if len(cases) != 1 or not isinstance(cases[0], dict) or not isinstance(observations, list):
+        raise ValueError("corpus needs exactly one case")
+    case = cases[0]
+    selected = case.get("observation_ids")
+    if not isinstance(selected, list):
+        raise ValueError("corpus case has invalid observations")
+    by_id = {item.get("id"): item for item in observations if isinstance(item, dict)}
+    projects = {by_id[item].get("project") for item in selected if item in by_id}
+    if (len(projects) != 1 or not all(isinstance(item, str) and item for item in projects)
+            or any(item not in by_id for item in selected)):
+        raise ValueError("corpus observations need one project")
+    case_id, question = case.get("id"), case.get("question")
+    if not isinstance(case_id, str) or not case_id or not isinstance(question, str) or not question.strip():
+        raise ValueError("corpus case identity is invalid")
+    return case_id, next(iter(projects)), question.strip()
+
+
+def auto(argv: list[str], cwd: Path) -> int:
+    """Run a source-verified query with repository and question discovery."""
+    import argparse
+
+    from tools.jev_memory_pilot import PilotConfig, query_unscoped_graphify, run_pilot
+
+    parser = argparse.ArgumentParser(prog="jeviphy auto")
+    parser.add_argument("--question")
+    parser.add_argument("--repo", type=Path)
+    parser.add_argument("--graph", type=Path)
+    parser.add_argument("--corpus", type=Path)
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--live", action="store_true")
+    parser.add_argument("--approved-paid-use", action="store_true")
+    parser.add_argument("--max-requests", type=int, default=0)
+    parser.add_argument("--threshold", type=float, default=0.8)
+    args = parser.parse_args(argv)
+    context = ensure_context(cwd, repo=args.repo, graph=args.graph)
+    graph = _read_graph(str(context.graph))
+    corpus_identity = None
+    corpus_status = None
+    if args.corpus is not None:
+        try:
+            corpus_identity = _corpus_identity(args.corpus)
+        except (OSError, ValueError, json.JSONDecodeError):
+            corpus_status = "memory_enrichment=skipped"
+    corpus_question = corpus_identity[2] if corpus_identity else None
+    question = select_question(graph, context.graph, args.question or corpus_question)
+    if corpus_identity and args.question and question != corpus_question:
+        corpus_status = "memory_enrichment=skipped"
+        corpus_identity = None
+    answer = None
+    mode: Literal["graph_only", "memory_offline", "memory_live"] = "graph_only"
+    live_status: Literal["not_requested", "applied", "skipped"] = (
+        "skipped" if args.live else "not_requested"
+    )
+    cost = None
+    if corpus_identity and args.corpus is not None:
+        case_id, project, _ = corpus_identity
+        try:
+            outcome = run_pilot(PilotConfig(
+                repo=context.repo, graph=context.graph, corpus=args.corpus,
+                case_id=case_id, project=project, candidate_mode="fast-source",
+                threshold=args.threshold, live=args.live,
+                approved_paid_use=args.approved_paid_use, max_requests=args.max_requests,
+            ))
+        except (OSError, ValueError, json.JSONDecodeError):
+            corpus_status = "memory_enrichment=skipped"
+        else:
+            answer = outcome.answer
+            live_status = outcome.live_enrichment
+            cost = outcome.actual_cost
+            if outcome.live_enrichment == "applied":
+                mode = "memory_live"
+            elif outcome.memory_applied:
+                mode = "memory_offline"
+    if answer is None:
+        answer = query_unscoped_graphify(context.graph, question)
+    result = AutoResult(
+        1, mode, str(context.repo), str(context.graph), question, live_status, answer,
+    )
+    if args.json:
+        print(json.dumps(asdict(result), sort_keys=True))
+    else:
+        print(f"Question: {question}")
+        print(answer, end="" if answer.endswith("\n") else "\n")
+    statuses = []
+    if corpus_status:
+        statuses.append(corpus_status)
+    if args.live:
+        statuses.append(f"live_enrichment={live_status}")
+    for status in dict.fromkeys(statuses):
+        print(status, file=sys.stderr)
+    if cost is not None:
+        print(f"Jev actual cost: USD {cost:.8f}", file=sys.stderr)
+    return 0

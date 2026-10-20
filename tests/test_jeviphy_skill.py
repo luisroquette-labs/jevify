@@ -39,7 +39,17 @@ def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
     )
     assert "--graph" in result.stdout
     assert "--corpus" in result.stdout
-    assert "--dry-run" in result.stdout
+    assert "--question" in result.stdout
+    assert "--json" in result.stdout
+
+    legacy = subprocess.run(
+        [sys.executable, str(script), "query", "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "--dry-run" in legacy.stdout
 
 
 def test_portable_skill_code_matches_project_code() -> None:
