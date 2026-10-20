@@ -229,8 +229,15 @@ def auto(argv: list[str], cwd: Path) -> int:
     parser.add_argument("--max-requests", type=int, default=0)
     parser.add_argument("--threshold", type=float, default=0.8)
     args = parser.parse_args(argv)
-    context = ensure_context(cwd, repo=args.repo, graph=args.graph)
-    graph = _read_graph(str(context.graph))
+    state = inspect_context(cwd, repo=args.repo, graph=args.graph)
+    if state.status == "ready":
+        context = state.context
+        graph = state.loaded_graph
+    else:
+        context = ensure_context(cwd, repo=args.repo, graph=args.graph)
+        graph = _read_graph(str(context.graph))
+    if graph is None:
+        raise ContextError("graph could not be loaded")
     corpus_identity = None
     corpus_status = None
     if args.corpus is not None:
