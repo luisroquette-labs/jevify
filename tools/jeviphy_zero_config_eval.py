@@ -251,6 +251,7 @@ def run_evaluation(manifest_path: Path, repo_root: Path, output_dir: Path, runne
                     if case["exact_output"]:
                         direct = _run(direct_cmd, cwd, env)
                     jeviphy = _run(jev_cmd, cwd, env)
+                assert jeviphy is not None
                 expected_error = case["expected"] == "error"
                 successful = jeviphy["returncode"] == 0
                 outcome = "error" if not successful else "success"

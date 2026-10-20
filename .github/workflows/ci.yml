@@ -116,7 +116,15 @@ jobs:
         run: uv sync --frozen
 
       - name: bandit (static security analysis)
-        run: uv run --frozen bandit -r graphify skills/jeviphy/scripts/tools tools/jev_memory_pilot.py tools/jev_memory_pilot_api.py tools/jeviphy_demo.py tools/jeviphy_stress.py tools/jeviphy_full_stress.py tools/jeviphy_paid_stress.py -ll
+        run: >-
+          uv run --frozen bandit -r graphify skills/jeviphy/scripts/tools
+          tools/jev_memory_pilot.py tools/jev_memory_pilot_api.py
+          tools/jeviphy_demo.py tools/jeviphy_stress.py tools/jeviphy_full_stress.py
+          tools/jeviphy_paid_stress.py tools/jeviphy_product_batch.py
+          tools/jeviphy_product_dataset.py tools/jeviphy_product_eval.py
+          tools/jeviphy_evidence_bundle.py tools/jeviphy_install_eval.py
+          tools/jeviphy_reproduction.py tools/jeviphy_zero_config_eval.py
+          tools/jeviphy_claim_check.py -ll
 
       - name: pip-audit (dependency vulnerabilities)
         run: uv run --frozen pip-audit --strict
