@@ -132,6 +132,22 @@ def test_failed_repair_does_not_retry(repo_with_graph, monkeypatch):
     assert len(calls) == 1
 
 
+def test_failed_corrupt_repair_restores_original(repo_with_graph, monkeypatch):
+    repo, graph = repo_with_graph
+    graph.write_text("{broken", encoding="utf-8")
+
+    monkeypatch.setattr(
+        autorun, "_run_repair",
+        lambda command, repo_arg, env: subprocess.CompletedProcess(
+            command, 1, "", "bounded failure",
+        ),
+    )
+    with pytest.raises(ContextError, match="graph repair failed"):
+        ensure_context(repo)
+    assert graph.read_text(encoding="utf-8") == "{broken"
+    assert not list(graph.parent.glob(".graph.json.jeviphy-corrupt-*"))
+
+
 def test_invalid_repaired_graph_is_rejected_without_retry(repo_with_graph, monkeypatch):
     repo, graph = repo_with_graph
     graph.unlink()

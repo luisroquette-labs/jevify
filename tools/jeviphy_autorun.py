@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -150,15 +151,30 @@ def ensure_context(
     for key in PROVIDER_ENV_KEYS:
         env.pop(key, None)
     env.update(GRAPHIFY_NO_AUTO_REFRESH="1", PYTHONHASHSEED="0")
-    result = _run_repair(command, state.context.repo, env)
-    if result.returncode:
-        diagnostic = (result.stderr or result.stdout or "no diagnostic").strip()[:1000]
-        raise ContextError(
-            f"graph repair failed ({' '.join(command)}): {diagnostic}"
+    backup = None
+    if state.status == "corrupt":
+        handle, name = tempfile.mkstemp(
+            dir=state.context.graph.parent, prefix=".graph.json.jeviphy-corrupt-",
         )
-    repaired = inspect_context(cwd, repo=state.context.repo, graph=state.context.graph)
-    if repaired.status != "ready":
-        raise ContextError(f"repair produced invalid graph: {repaired.diagnostic}")
+        os.close(handle)
+        backup = Path(name)
+        os.replace(state.context.graph, backup)
+    try:
+        result = _run_repair(command, state.context.repo, env)
+        if result.returncode:
+            diagnostic = (result.stderr or result.stdout or "no diagnostic").strip()[:1000]
+            raise ContextError(
+                f"graph repair failed ({' '.join(command)}): {diagnostic}"
+            )
+        repaired = inspect_context(cwd, repo=state.context.repo, graph=state.context.graph)
+        if repaired.status != "ready":
+            raise ContextError(f"repair produced invalid graph: {repaired.diagnostic}")
+    except Exception:
+        if backup is not None:
+            os.replace(backup, state.context.graph)
+        raise
+    if backup is not None:
+        backup.unlink()
     return repaired.context
 
 
@@ -242,7 +258,7 @@ def auto(argv: list[str], cwd: Path) -> int:
         graph = state.loaded_graph
     else:
         context = ensure_context(cwd, repo=args.repo, graph=args.graph)
-        graph = _read_graph(str(context.graph))
+        graph = _read_graph(str(context.graph), query_mode=True)
     if graph is None:
         raise ContextError("graph could not be loaded")
     corpus_identity = None
