@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
-#   "graphifyy @ git+https://github.com/luisroquette-labs/jeviphy.git@355773375977c8339181d30a512b334cbd67ba96",
+#   "graphifyy @ git+https://github.com/luisroquette-labs/jeviphy.git@2801cb7f3cbb77af5b87d6d4dce2313b460ad18d",
 # ]
 # ///
 """Portable Jeviphy entry point for Claude Code and Codex skill installs."""
