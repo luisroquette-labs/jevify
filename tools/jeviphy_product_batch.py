@@ -389,6 +389,10 @@ def evaluate_generated_arm(
         return ProductArmRecord(**{**asdict(failed), "evaluation_seconds": elapsed})
     elapsed = round(time.monotonic() - started, 3)
     report = evaluation_root / "logs" / "evaluation" / run_id / "results.json"
+    if not report.is_file():
+        current_reports = list(evaluation_root.glob(f"*.{run_id}.json"))
+        if len(current_reports) == 1:
+            report = current_reports[0]
     if completed.returncode != 0 or not report.is_file():
         failed = _failed_product_record(
             ArmResult(result.arm, result.instance_id, "infrastructure_failed", completed.returncode,

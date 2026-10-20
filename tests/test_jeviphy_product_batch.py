@@ -367,8 +367,7 @@ def test_completed_generation_uses_official_swebench_report(tmp_path, monkeypatc
     def run(command, **kwargs):
         captured["command"] = command
         run_id = command[-1]
-        report = Path(kwargs["cwd"]) / "logs" / "evaluation" / run_id / "results.json"
-        report.parent.mkdir(parents=True)
+        report = Path(kwargs["cwd"]) / f"model.{run_id}.json"
         report.write_text(json.dumps({
             "completed_ids": ["case-1"], "resolved_ids": ["case-1"],
             "unresolved_ids": [], "error_ids": [], "infra_failure_ids": [],
