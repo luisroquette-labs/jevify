@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema_version", "repos", "cases", "thresholds"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "repos": {"type": "array", "minItems": 6},
+    "cases": {"type": "array", "minItems": 30, "maxItems": 30},
+    "thresholds": {
+      "type": "object",
+      "properties": {
+        "median_overhead_fraction": {"const": 0.10},
+        "p95_overhead_fraction": {"const": 0.15},
+        "measured_pairs": {"minimum": 5}
+      },
+      "required": ["median_overhead_fraction", "p95_overhead_fraction", "measured_pairs"]
+    }
+  }
+}

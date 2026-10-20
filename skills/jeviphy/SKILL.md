@@ -9,15 +9,21 @@ Use Graphify's existing graph and query engine. Treat memory links as suggestion
 
 ## Default invocation
 
-When the user invokes Jeviphy without an explicit question:
+Resolve the directory containing this installed `SKILL.md` as `JEVIPHY_SKILL_DIR`. Preserve the
+target repository as the process working directory, then run:
 
-1. Use the current working directory as the target repository. Do not ask for a repository or path unless the directory is not inside a Git worktree.
-2. Use `graphify-out/graph.json`; build or refresh it offline when absent or stale.
-3. Generate three to five useful questions from the graph, recent repository changes, and the user's active problem. Rank them by user impact, operational risk, and how much the graph can clarify.
-4. Select the highest-value question and run the baseline query automatically. Do not ask the user to choose a question first.
-5. Check the selected result against the referenced source files before presenting conclusions. Separate graph suggestions, source-confirmed behavior, and runtime facts.
+```bash
+uv run "$JEVIPHY_SKILL_DIR/scripts/run.py" auto
+```
 
-When the user supplies a question, use it directly. If no approved memory corpus is available, run Graphify's direct offline query from [the graph workflow](references/graph.md) and report that memory enrichment was skipped. A corpus is optional for a bare invocation and must never block the baseline. Question generation and baseline queries stay offline and require no paid API approval.
+Pass an explicit question as `auto --question "..."`.
+Do not reproduce auto discovery in the host prompt: the runner resolves the Git root, repairs the graph once when needed, selects a useful
+question, and completes the offline Graphify query. Do not ask the user to choose a repository,
+question, corpus, mode, or credential. Check cited source files before presenting conclusions.
+
+A corpus is optional. When reviewed observations are already available through `memory-gateway`,
+write the single-case corpus outside Git with directory mode `0700` and file mode `0600`, then rerun
+the same command with `--corpus PATH`. Without it, finish with the graph-only answer.
 
 ## Workflow
 
@@ -27,17 +33,17 @@ Install the skill for both supported hosts with:
 python scripts/install_jeviphy_skill.py install --host both
 ```
 
-Run `python skills/jeviphy/scripts/run.py doctor --repo PATH --graph PATH --corpus PATH`
-before the first query. It checks the repository, graph commit, private corpus permissions, and
-returns a single JSON diagnostic. `query` accepts the existing pilot arguments; `benchmark`
+Run `uv run "$JEVIPHY_SKILL_DIR/scripts/run.py" doctor` for a read-only diagnostic when needed.
+It checks the current repository and graph; add `--corpus PATH` to check private corpus permissions.
+`query` accepts the existing strict pilot arguments; `benchmark`
 runs five or more paired offline retrieval passes for one frozen v2 case.
 
-1. Locate the target Git repository and its `graphify-out/graph.json`. Confirm the graph's `built_at_commit` equals `git rev-parse HEAD`; use the [graph commands](references/graph.md) to build or refresh it offline when absent or stale.
+1. Use `auto`; repository discovery, graph validation, and one bounded repair belong to the runner.
 2. When approved project observations are available, retrieve only the relevant ones through the supported Claude Mem bridge or another approved export. Keep the corpus outside Git, with mode `0700` on its directory and `0600` on files. Never read the Claude Mem database directly. Use the [memory workflow](references/memory.md) and [corpus schema](references/corpus.md). Otherwise continue with the graph-only baseline.
-3. Run the baseline query before any Jev decision. Example:
+3. Use the strict legacy interface only for an explicit evaluation. Example:
 
    ```bash
-   uv run /path/to/jeviphy/skills/jeviphy/scripts/run.py \
+   uv run "$JEVIPHY_SKILL_DIR/scripts/run.py" query \
      --repo /path/to/project --graph /path/to/project/graphify-out/graph.json \
      --corpus /private/path/corpus.json --case-id q001 --project project-name
    ```

@@ -1,0 +1,325 @@
+{
+  "cases": [
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "axios__axios-root_explicit",
+      "question": "Server-Side Request Forgery Vulnerability (CVE-2024-39338)",
+      "repo_id": "axios/axios",
+      "timing": true,
+      "variant": "root_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "axios__axios-nested_explicit",
+      "question": "Server-Side Request Forgery Vulnerability (CVE-2024-39338)",
+      "repo_id": "axios/axios",
+      "timing": true,
+      "variant": "nested_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "axios__axios-auto_question",
+      "question": "Server-Side Request Forgery Vulnerability (CVE-2024-39338)",
+      "repo_id": "axios/axios",
+      "timing": true,
+      "variant": "auto_question"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "axios__axios-live_missing",
+      "question": "Server-Side Request Forgery Vulnerability (CVE-2024-39338)",
+      "repo_id": "axios/axios",
+      "timing": false,
+      "variant": "live_missing"
+    },
+    {
+      "exact_output": false,
+      "expected": "success",
+      "id": "axios__axios-missing_graph",
+      "question": "Server-Side Request Forgery Vulnerability (CVE-2024-39338)",
+      "repo_id": "axios/axios",
+      "timing": false,
+      "variant": "missing_graph"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "fmtlib__fmt-root_explicit",
+      "question": "`group_digits`does not work with negative integers",
+      "repo_id": "fmtlib/fmt",
+      "timing": true,
+      "variant": "root_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "fmtlib__fmt-nested_explicit",
+      "question": "`group_digits`does not work with negative integers",
+      "repo_id": "fmtlib/fmt",
+      "timing": true,
+      "variant": "nested_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "fmtlib__fmt-auto_question",
+      "question": "`group_digits`does not work with negative integers",
+      "repo_id": "fmtlib/fmt",
+      "timing": true,
+      "variant": "auto_question"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "fmtlib__fmt-live_missing",
+      "question": "`group_digits`does not work with negative integers",
+      "repo_id": "fmtlib/fmt",
+      "timing": false,
+      "variant": "live_missing"
+    },
+    {
+      "exact_output": false,
+      "expected": "success",
+      "id": "fmtlib__fmt-stale_graph",
+      "question": "`group_digits`does not work with negative integers",
+      "repo_id": "fmtlib/fmt",
+      "timing": false,
+      "variant": "stale_graph"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "google__gson-root_explicit",
+      "question": "Primitive type adapters don't perform numeric conversion during serialization",
+      "repo_id": "google/gson",
+      "timing": true,
+      "variant": "root_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "google__gson-nested_explicit",
+      "question": "Primitive type adapters don't perform numeric conversion during serialization",
+      "repo_id": "google/gson",
+      "timing": true,
+      "variant": "nested_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "google__gson-auto_question",
+      "question": "Primitive type adapters don't perform numeric conversion during serialization",
+      "repo_id": "google/gson",
+      "timing": true,
+      "variant": "auto_question"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "google__gson-live_missing",
+      "question": "Primitive type adapters don't perform numeric conversion during serialization",
+      "repo_id": "google/gson",
+      "timing": false,
+      "variant": "live_missing"
+    },
+    {
+      "exact_output": false,
+      "expected": "success",
+      "id": "google__gson-corrupt_graph",
+      "question": "Primitive type adapters don't perform numeric conversion during serialization",
+      "repo_id": "google/gson",
+      "timing": false,
+      "variant": "corrupt_graph"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "preactjs__preact-root_explicit",
+      "question": "Support cleanup functions for refs",
+      "repo_id": "preactjs/preact",
+      "timing": true,
+      "variant": "root_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "preactjs__preact-nested_explicit",
+      "question": "Support cleanup functions for refs",
+      "repo_id": "preactjs/preact",
+      "timing": true,
+      "variant": "nested_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "preactjs__preact-auto_question",
+      "question": "Support cleanup functions for refs",
+      "repo_id": "preactjs/preact",
+      "timing": true,
+      "variant": "auto_question"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "preactjs__preact-live_missing",
+      "question": "Support cleanup functions for refs",
+      "repo_id": "preactjs/preact",
+      "timing": false,
+      "variant": "live_missing"
+    },
+    {
+      "exact_output": false,
+      "expected": "success",
+      "id": "preactjs__preact-invalid_corpus",
+      "question": "Support cleanup functions for refs",
+      "repo_id": "preactjs/preact",
+      "timing": false,
+      "variant": "invalid_corpus"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "faker-ruby__faker-root_explicit",
+      "question": "Faker::Internet.password method doesn't add numbers anymore",
+      "repo_id": "faker-ruby/faker",
+      "timing": true,
+      "variant": "root_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "faker-ruby__faker-nested_explicit",
+      "question": "Faker::Internet.password method doesn't add numbers anymore",
+      "repo_id": "faker-ruby/faker",
+      "timing": true,
+      "variant": "nested_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "faker-ruby__faker-auto_question",
+      "question": "Faker::Internet.password method doesn't add numbers anymore",
+      "repo_id": "faker-ruby/faker",
+      "timing": true,
+      "variant": "auto_question"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "faker-ruby__faker-live_missing",
+      "question": "Faker::Internet.password method doesn't add numbers anymore",
+      "repo_id": "faker-ruby/faker",
+      "timing": false,
+      "variant": "live_missing"
+    },
+    {
+      "exact_output": false,
+      "expected": "error",
+      "id": "faker-ruby__faker-outside_git",
+      "question": "Faker::Internet.password method doesn't add numbers anymore",
+      "repo_id": "faker-ruby/faker",
+      "timing": false,
+      "variant": "outside_git"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "jqlang__jq-root_explicit",
+      "question": "Allow `--` to come just before the jq program",
+      "repo_id": "jqlang/jq",
+      "timing": true,
+      "variant": "root_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "jqlang__jq-nested_explicit",
+      "question": "Allow `--` to come just before the jq program",
+      "repo_id": "jqlang/jq",
+      "timing": true,
+      "variant": "nested_explicit"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "jqlang__jq-auto_question",
+      "question": "Allow `--` to come just before the jq program",
+      "repo_id": "jqlang/jq",
+      "timing": true,
+      "variant": "auto_question"
+    },
+    {
+      "exact_output": true,
+      "expected": "success",
+      "id": "jqlang__jq-live_missing",
+      "question": "Allow `--` to come just before the jq program",
+      "repo_id": "jqlang/jq",
+      "timing": false,
+      "variant": "live_missing"
+    },
+    {
+      "exact_output": false,
+      "expected": "error",
+      "id": "jqlang__jq-repair_failure",
+      "question": "Allow `--` to come just before the jq program",
+      "repo_id": "jqlang/jq",
+      "timing": false,
+      "variant": "repair_failure"
+    }
+  ],
+  "created_at": "2026-10-19",
+  "repos": [
+    {
+      "commit": "c6cce43cd94489f655f4488c5a50ecaf781c94f2",
+      "directory": "axios__axios",
+      "graph_sha256": "f9d880354d86a3c9f982887bd51af4cdab04b4a27a9ca3632291ecc5e7a2232e",
+      "id": "axios/axios",
+      "origin": "https://github.com/axios/axios.git"
+    },
+    {
+      "commit": "365c3fbd258fb3df69007fc7a22c0472dd31dcbb",
+      "directory": "fmtlib__fmt",
+      "graph_sha256": "794b6bfee61e47e40a22afb85f6000e23563a018b59f64aced446c9dd6ca8bc9",
+      "id": "fmtlib/fmt",
+      "origin": "https://github.com/fmtlib/fmt.git"
+    },
+    {
+      "commit": "796193d0326a2f44bc314bf24262732ea3e64014",
+      "directory": "google__gson",
+      "graph_sha256": "04aa9b02cd227736ae33346940424154b7dea221e36183856b57c5e1b5941e44",
+      "id": "google/gson",
+      "origin": "https://github.com/google/gson.git"
+    },
+    {
+      "commit": "db0f4f2e7a2338ea40050f623f05505a798fc1a4",
+      "directory": "preactjs__preact",
+      "graph_sha256": "043af446f232dad6a5131c4a1b9babbef8d3cb7a790b88075aaa4aa8eae7d586",
+      "id": "preactjs/preact",
+      "origin": "https://github.com/preactjs/preact.git"
+    },
+    {
+      "commit": "4d52bc1e148d5290da10cb2775e244e0023778b0",
+      "directory": "faker-ruby__faker",
+      "graph_sha256": "b8e5c970ef4e66624a0afd384d62721539cefe14db50a2f2684748ab75e32de1",
+      "id": "faker-ruby/faker",
+      "origin": "https://github.com/faker-ruby/faker.git"
+    },
+    {
+      "commit": "7f547827e47b5ade563a293329deb4226496d72f",
+      "directory": "jqlang__jq",
+      "graph_sha256": "5668b390daa4375edb8e9371ed5ee92faa0e854071511df43b48ca14b8bfb6be",
+      "id": "jqlang/jq",
+      "origin": "https://github.com/jqlang/jq.git"
+    }
+  ],
+  "schema_version": 1,
+  "thresholds": {
+    "measured_pairs": 5,
+    "median_overhead_fraction": 0.1,
+    "p95_overhead_fraction": 0.15
+  }
+}

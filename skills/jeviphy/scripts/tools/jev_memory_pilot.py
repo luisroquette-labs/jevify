@@ -12,10 +12,39 @@ import statistics
 import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 from graphify.serve import _query_graph_text, _query_terms, _read_graph, _score_query
+
+
+@dataclass(frozen=True)
+class PilotConfig:
+    repo: Path
+    graph: Path
+    corpus: Path
+    case_id: str
+    project: str
+    candidate_mode: Literal["question", "memory", "fast-source"] = "question"
+    threshold: float = 0.8
+    decisions: Path | None = None
+    dry_run: bool = False
+    print_synthetic_payload: bool = False
+    live: bool = False
+    approved_paid_use: bool = False
+    max_requests: int = 0
+    api_key: str | None = None
+
+
+@dataclass(frozen=True)
+class PilotOutcome:
+    answer: str
+    model_id: str | None
+    actual_cost: float | None
+    memory_applied: bool
+    live_enrichment: Literal["not_requested", "applied", "skipped"]
 
 
 def _head(repo: Path) -> str:
@@ -309,6 +338,7 @@ def query_with_decisions(
     answers: dict[tuple[str, str], dict], *, eligible_node_ids: set[str], threshold: float,
     model_id: str | None = None, candidate_mode: str = "question", graph=None,
     allow_source_seeds: bool = True,
+    emit_status: bool = True,
 ) -> str:
     """Run Graphify with validated source seeds or promoted decision seeds."""
     observations = case["observations"]
@@ -323,9 +353,9 @@ def query_with_decisions(
         and all(item.get("source_scoped") for item in candidates[:3])
         and ((allow_source_seeds and not answers) or (valid and bool(suggestions)))
     )
-    if not answers and not source_seeded:
+    if emit_status and not answers and not source_seeded:
         print("Jev unavailable; using unseeded Graphify query", file=sys.stderr)
-    elif answers and not valid:
+    elif emit_status and answers and not valid:
         print("Invalid or incomplete decisions; using unseeded Graphify query", file=sys.stderr)
     assisted = [item["node_id"] for item in ordered[:3]] != [item["node_id"] for item in candidates[:3]]
     selected = [item["node_id"] for item in ordered[:3]] if assisted or source_seeded else []
@@ -500,7 +530,90 @@ def evaluate(cases: list[dict], baseline: dict[str, dict], assisted: dict[str, d
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def run_pilot(config: PilotConfig) -> PilotOutcome:
+    """Execute one pilot query without printing or reading unneeded credentials."""
+    if config.live and (config.decisions or config.dry_run):
+        raise ValueError("--live cannot be combined with --decisions or --dry-run")
+    if config.print_synthetic_payload and not config.dry_run:
+        raise ValueError("--print-synthetic-payload requires --dry-run")
+    if config.live:
+        validate_private_corpus(config.corpus)
+    if (config.candidate_mode == "fast-source"
+            and not (config.live or config.dry_run or config.decisions)):
+        unscoped_case = load_case(config.corpus, config.case_id, None, config.project)
+        if not any(obs.get("source_paths") for obs in unscoped_case["observations"]):
+            return PilotOutcome(
+                query_unscoped_graphify(config.graph, unscoped_case["question"]),
+                None, None, False, "not_requested",
+            )
+    graph = _read_graph(str(config.graph))
+    case = load_case(config.corpus, config.case_id, set(graph.nodes), config.project)
+    source_paths = list(dict.fromkeys(
+        path for item in case["observations"] for path in item.get("source_paths", [])
+    )) if config.candidate_mode != "question" else None
+    candidates = candidate_pool(
+        config.graph, config.repo, case["question"],
+        [item["summary"] for item in case["observations"]]
+        if config.candidate_mode != "question" else None,
+        source_paths=source_paths,
+        fast_source=config.candidate_mode == "fast-source",
+        graph=graph,
+    )
+    answers = load_decisions(config.decisions) if config.decisions else {}
+    eligible_node_ids = {item["node_id"] for item in candidates if item["source_file"]}
+    model_id = None
+    cost = None
+    live_enrichment: Literal["not_requested", "applied", "skipped"] = (
+        "skipped" if config.live else "not_requested"
+    )
+    if config.dry_run or config.live:
+        from tools.jev_memory_pilot_api import decide_once, make_request
+
+        payload, pair_map = make_request(config.repo, case["question"], candidates,
+                                         case["observations"])
+        eligible_node_ids = {node_id for node_id, _ in pair_map.values()}
+        if config.dry_run:
+            if config.print_synthetic_payload:
+                own_repo = Path(__file__).resolve().parents[1]
+                fixture = own_repo / "tests" / "fixtures" / "jev_memory_pilot.json"
+                if (config.repo.resolve() != own_repo or config.corpus.resolve() != fixture
+                        or any(not obs["id"].startswith("synthetic-")
+                               for obs in case["observations"])):
+                    raise ValueError("printing is limited to the public synthetic fixture")
+                answer = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+            else:
+                path = save_private_payload(config.repo, case["id"], payload)
+                answer = f"Dry-run payload: {path}; pairs: {len(pair_map)}"
+            return PilotOutcome(answer, None, None, False, "not_requested")
+        if not config.approved_paid_use or config.max_requests < 1:
+            raise ValueError("--live requires --approved-paid-use and --max-requests >= 1")
+        if pair_map:
+            key = (config.api_key if config.api_key is not None
+                   else os.environ.get("JEV_MEMORY_PILOT_API_KEY"))
+            answers, model_id, cost = decide_once(
+                payload, pair_map, live=True, approved=True,
+                max_requests=config.max_requests, api_key=key,
+            )
+            if model_id is not None and cost is not None:
+                live_enrichment = "applied"
+    memory_applied = bool(
+        config.candidate_mode == "fast-source"
+        and candidates
+        and all(item.get("source_scoped") for item in candidates[:3])
+        and not answers
+        and not config.decisions
+    )
+    answer = query_with_decisions(
+        config.graph, config.repo, case, candidates, answers,
+        eligible_node_ids=eligible_node_ids,
+        threshold=config.threshold, model_id=model_id,
+        candidate_mode=config.candidate_mode, graph=graph,
+        allow_source_seeds=not answers and not config.decisions, emit_status=False,
+    )
+    return PilotOutcome(answer, model_id, cost, memory_applied, live_enrichment)
+
+
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Offline Graphify memory pilot")
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--graph", type=Path, required=True)
@@ -516,70 +629,32 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--live", action="store_true", help="Opt in to one paid Jev request")
     parser.add_argument("--approved-paid-use", action="store_true")
     parser.add_argument("--max-requests", type=int, default=0)
-    args = parser.parse_args(argv)
-    if args.live and (args.decisions or args.dry_run):
-        parser.error("--live cannot be combined with --decisions or --dry-run")
-    if args.print_synthetic_payload and not args.dry_run:
-        parser.error("--print-synthetic-payload requires --dry-run")
-    if args.live:
-        validate_private_corpus(args.corpus)
-    if args.candidate_mode == "fast-source" and not (args.live or args.dry_run or args.decisions):
-        unscoped_case = load_case(args.corpus, args.case_id, None, args.project)
-        if not any(obs.get("source_paths") for obs in unscoped_case["observations"]):
-            print(query_unscoped_graphify(args.graph, unscoped_case["question"]), end="")
-            return 0
-    graph = _read_graph(str(args.graph))
-    case = load_case(args.corpus, args.case_id, set(graph.nodes), args.project)
-    source_paths = list(dict.fromkeys(
-        path for item in case["observations"] for path in item.get("source_paths", [])
-    )) if args.candidate_mode != "question" else None
-    candidates = candidate_pool(
-        args.graph, args.repo, case["question"],
-        [item["summary"] for item in case["observations"]]
-        if args.candidate_mode != "question" else None,
-        source_paths=source_paths,
-        fast_source=args.candidate_mode == "fast-source",
-        graph=graph,
-    )
-    if args.live and args.candidate_mode == "fast-source" and not candidates:
-        parser.error("fast-source requires scored nodes in trusted cited files for live use")
-    answers = load_decisions(args.decisions) if args.decisions else {}
-    eligible_node_ids = {item["node_id"] for item in candidates if item["source_file"]}
-    model_id = None
-    if args.dry_run or args.live:
-        from tools.jev_memory_pilot_api import decide_once, make_request
+    return parser
 
-        payload, pair_map = make_request(args.repo, case["question"], candidates,
-                                         case["observations"])
-        eligible_node_ids = {node_id for node_id, _ in pair_map.values()}
-        if args.dry_run:
-            if args.print_synthetic_payload:
-                own_repo = Path(__file__).resolve().parents[1]
-                fixture = own_repo / "tests" / "fixtures" / "jev_memory_pilot.json"
-                if (args.repo.resolve() != own_repo or args.corpus.resolve() != fixture
-                        or any(not obs["id"].startswith("synthetic-")
-                               for obs in case["observations"])):
-                    parser.error("printing is limited to the public synthetic fixture")
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                path = save_private_payload(args.repo, case["id"], payload)
-                print(f"Dry-run payload: {path}; pairs: {len(pair_map)}", file=sys.stderr)
-            return 0
-        if not args.approved_paid_use or args.max_requests < 1:
-            parser.error("--live requires --approved-paid-use and --max-requests >= 1")
-        # No credential access occurs in default or dry-run mode.
-        key = os.environ.get("JEV_MEMORY_PILOT_API_KEY")
-        answers, model_id, cost = decide_once(
-            payload, pair_map, live=True, approved=True,
-            max_requests=args.max_requests, api_key=key,
-        )
-        if cost is not None:
-            print(f"Jev actual cost: USD {cost:.8f}", file=sys.stderr)
-    print(query_with_decisions(args.graph, args.repo, case, candidates, answers,
-                               eligible_node_ids=eligible_node_ids,
-                               threshold=args.threshold, model_id=model_id,
-                               candidate_mode=args.candidate_mode, graph=graph,
-                               allow_source_seeds=not (args.live or args.decisions)), end="")
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _parser()
+    args = parser.parse_args(argv)
+    try:
+        outcome = run_pilot(PilotConfig(
+            repo=args.repo, graph=args.graph, corpus=args.corpus, case_id=args.case_id,
+            project=args.project, candidate_mode=args.candidate_mode,
+            threshold=args.threshold, decisions=args.decisions, dry_run=args.dry_run,
+            print_synthetic_payload=args.print_synthetic_payload, live=args.live,
+            approved_paid_use=args.approved_paid_use, max_requests=args.max_requests,
+        ))
+    except ValueError as exc:
+        if str(exc).startswith("--") or "printing is limited" in str(exc):
+            parser.error(str(exc))
+        raise
+    if args.dry_run and not args.print_synthetic_payload:
+        print(outcome.answer, file=sys.stderr)
+    else:
+        print(outcome.answer, end="")
+    if outcome.actual_cost is not None:
+        print(f"Jev actual cost: USD {outcome.actual_cost:.8f}", file=sys.stderr)
+    elif args.live:
+        print("live_enrichment=skipped", file=sys.stderr)
     return 0
 
 

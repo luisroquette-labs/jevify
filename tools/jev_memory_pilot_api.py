@@ -7,7 +7,6 @@ import json
 import math
 import re
 import subprocess
-import sys
 import urllib.request
 from pathlib import Path, PurePosixPath
 
@@ -162,12 +161,10 @@ def decide_once(
     if not approved or max_requests < 1:
         raise ValueError("live Jev requires approval flag and positive request cap")
     if not api_key:
-        print("Jev key unavailable; using baseline", file=sys.stderr)
         return {}, None, None
     try:
         response = call_jev(payload, api_key)
         answers = parse_answers(response, pair_map)
     except (TimeoutError, OSError, ValueError, json.JSONDecodeError):
-        print("Jev request failed or outcome uncertain; using baseline without retry", file=sys.stderr)
         return {}, None, None
     return answers, response["model"], float(response["usage"]["cost"])

@@ -45,7 +45,7 @@ class ToolError(Exception):
     """
 
 
-def _read_graph(graph_path: str) -> nx.Graph:
+def _read_graph(graph_path: str, *, query_mode: bool = False) -> nx.Graph:
     """Load graph.json exactly as the MCP server does, raising on a bad path
     or file (ValueError, FileNotFoundError, json.JSONDecodeError) so a library
     caller such as the benchmark can handle it."""
@@ -64,13 +64,20 @@ def _read_graph(graph_path: str) -> nx.Graph:
     # order (#2309); tools that care about logical direction (#2487) must
     # not mistake the override for graph truth.
     _logical_directed = bool(data.get("directed", False))
-    data = {**data, "directed": True}
+    if query_mode:
+        data = {**data, "links": [{
+            **link,
+            "_src": link.get("_src", link.get("source")),
+            "_tgt": link.get("_tgt", link.get("target")),
+        } for link in data.get("links", [])]}
+    else:
+        data = {**data, "directed": True}
     # Repair files whose links hold parallel edges while the serialized flag says
     # otherwise (#4500): older writers restored original_links verbatim while
     # node_link_data derived "multigraph": false from the simple graph. Forced the
     # same way "directed" is forced above, so the load keeps every relationship
     # instead of collapsing parallel edges.
-    if has_parallel_links(data.get("links"), directed=True):
+    if not query_mode and has_parallel_links(data.get("links"), directed=True):
         data = {**data, "multigraph": True}
     try:
         from graphify.build import graph_has_legacy_ids as _legacy
@@ -95,11 +102,12 @@ def _read_graph(graph_path: str) -> nx.Graph:
     # Attach the work-memory overlay (derived sidecar next to graph.json) so
     # the query/MCP read surface can annotate NODE lines display-only. Empty
     # when no sidecar exists, leaving un-annotated output byte-identical.
-    try:
-        from graphify.reflect import load_learning_overlay as _llo
-        G.graph["_learning_overlay"] = _llo(resolved)
-    except Exception:
-        G.graph["_learning_overlay"] = {}
+    if not query_mode:
+        try:
+            from graphify.reflect import load_learning_overlay as _llo
+            G.graph["_learning_overlay"] = _llo(resolved)
+        except Exception:
+            G.graph["_learning_overlay"] = {}
     return G
 
 

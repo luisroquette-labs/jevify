@@ -15,14 +15,22 @@ def test_bare_invocation_is_autonomous_and_corpus_optional() -> None:
     root = Path(__file__).resolve().parents[1]
     skill = (root / "skills" / "jeviphy" / "SKILL.md").read_text(encoding="utf-8")
 
-    assert "Use the current working directory as the target repository" in skill
-    assert "Do not ask the user to choose a question first" in skill
-    assert "A corpus is optional for a bare invocation" in skill
-    assert "Otherwise continue with the graph-only baseline" in skill
+    assert "Preserve the\ntarget repository as the process working directory" in skill
+    assert "Do not ask the user to choose a repository" in skill
+    assert "A corpus is optional" in skill
+    assert "finish with the graph-only answer" in skill
     assert "approval persists for the current conversation" in skill
     assert "without asking again or offering offline/live choices" in skill
     assert "accept the runner's baseline fallback" in skill
     assert "Do not stop the invocation to request a new key" in skill
+
+
+def test_skill_bare_path_delegates_to_installed_runner() -> None:
+    root = Path(__file__).resolve().parents[1]
+    skill = (root / "skills/jeviphy/SKILL.md").read_text(encoding="utf-8")
+    assert "uv run" in skill
+    assert '$JEVIPHY_SKILL_DIR/scripts/run.py\" auto' in skill
+    assert "Do not reproduce auto discovery in the host prompt" in skill
 
 
 def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
@@ -39,17 +47,35 @@ def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
     )
     assert "--graph" in result.stdout
     assert "--corpus" in result.stdout
-    assert "--dry-run" in result.stdout
+    assert "--question" in result.stdout
+    assert "--json" in result.stdout
+
+    legacy = subprocess.run(
+        [sys.executable, str(script), "query", "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "--dry-run" in legacy.stdout
 
 
 def test_portable_skill_code_matches_project_code() -> None:
     root = Path(__file__).resolve().parents[1]
+    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jeviphy_autorun.py",
+                 "jeviphy_provenance.py"):
+        source = (root / "tools" / name).read_bytes()
+        assert source == (root / "skills" / "jeviphy" / "scripts" / "tools" / name).read_bytes()
+
+
+def test_pinned_commit_matches_portable_core() -> None:
+    root = Path(__file__).resolve().parents[1]
     script = root / "skills" / "jeviphy" / "scripts" / "run.py"
     pinned = re.search(r"graphifyy @ git\+https://[^\s\"]+@([0-9a-f]{40})", script.read_text())
     assert pinned is not None
-    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py"):
+    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jeviphy_autorun.py",
+                 "jeviphy_provenance.py"):
         source = (root / "tools" / name).read_bytes()
-        assert source == (root / "skills" / "jeviphy" / "scripts" / "tools" / name).read_bytes()
         committed = subprocess.run(
             ["git", "show", f"{pinned.group(1)}:tools/{name}"],
             cwd=root, check=True, capture_output=True,
