@@ -10,6 +10,7 @@ import signal
 import subprocess
 import time
 from dataclasses import asdict, dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from tools.jeviphy_product_eval import validate_live_limits
@@ -45,6 +46,23 @@ def _trajectory_path(output: Path, instance_id: str) -> Path:
     return output / instance_id / f"{instance_id}.traj.json"
 
 
+def required_openrouter_budget(config: Path, agent_calls: int) -> Decimal:
+    """Return the worst-case model spend declared by mini-swe-agent's config."""
+    match = re.search(
+        r"(?m)^\s{2}cost_limit:\s*([0-9]+(?:\.[0-9]+)?)\s*$",
+        config.read_text(encoding="utf-8"),
+    )
+    if not match:
+        raise ValueError(f"agent.cost_limit is missing from {config}")
+    try:
+        per_call = Decimal(match.group(1))
+    except InvalidOperation as error:
+        raise ValueError(f"agent.cost_limit is invalid in {config}") from error
+    if per_call <= 0:
+        raise ValueError(f"agent.cost_limit must be positive in {config}")
+    return per_call * agent_calls
+
+
 def _reported_statuses(output: Path) -> list[str]:
     statuses: list[str] = []
     paths = list(output.glob("exit_statuses_*.yaml"))
@@ -75,6 +93,8 @@ def inspect_swebench_output(output: Path, instance_id: str, returncode: int) -> 
     elif marker or infrastructure_status:
         state = "infrastructure_failed"
         diagnostic = details or marker or infrastructure_status
+        if diagnostic is None:
+            diagnostic = "infrastructure failure"
         if marker and marker not in diagnostic:
             diagnostic = f"{diagnostic}: {marker}"
     elif returncode != 0:
@@ -91,12 +111,13 @@ def inspect_swebench_output(output: Path, instance_id: str, returncode: int) -> 
 
 def run_one(
     root: Path,
+    output_root: Path,
     arm: str,
     instance_id: str,
     api_key: str,
     timeout_seconds: int,
 ) -> ArmResult:
-    output = root / "isolated" / arm / instance_id
+    output = output_root / arm / instance_id
     output.mkdir(mode=0o700, parents=True, exist_ok=True)
     trajectory = _trajectory_path(output, instance_id)
     if trajectory.exists():
@@ -175,13 +196,15 @@ def run_batch(
     api_key: str,
     *,
     timeout_seconds: int = 2100,
+    output_root: Path | None = None,
 ) -> list[ArmResult]:
-    progress = root / "isolated" / "run-results.jsonl"
+    output_root = output_root or root / "isolated"
+    progress = output_root / "run-results.jsonl"
     results: list[ArmResult] = []
     for index, instance_id in enumerate(instance_ids):
         order = ("graphify", "jeviphy") if index % 2 == 0 else ("jeviphy", "graphify")
         for arm in order:
-            result = run_one(root, arm, instance_id, api_key, timeout_seconds)
+            result = run_one(root, output_root, arm, instance_id, api_key, timeout_seconds)
             results.append(result)
             _append_result(progress, result)
             if result.state == "infrastructure_failed":
@@ -189,7 +212,7 @@ def run_batch(
                     f"infrastructure failure in {arm}/{instance_id}: {result.diagnostic}"
                 )
 
-    output = root / "isolated" / "run-results.json"
+    output = output_root / "run-results.json"
     descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
         json.dump([asdict(result) for result in results], stream, indent=2, sort_keys=True)
@@ -201,6 +224,7 @@ def main() -> int:
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--cases", type=Path, required=True)
     parser.add_argument("--timeout-seconds", type=int, default=2100)
+    parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--allow-network-agent", action="store_true")
     parser.add_argument("--max-agent-calls", type=int, default=0)
     parser.add_argument("--max-cost-usd", type=float, default=0)
@@ -217,11 +241,25 @@ def main() -> int:
         parser.error(f"{required_calls} arms exceed --max-agent-calls={args.max_agent_calls}")
     if args.timeout_seconds < 1:
         parser.error("--timeout-seconds must be positive")
+    try:
+        required_cost = required_openrouter_budget(
+            args.root / "mini-openrouter.yaml", required_calls
+        )
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+    if Decimal(str(args.max_cost_usd)) < required_cost:
+        parser.error(
+            f"worst-case OpenRouter spend is ${required_cost}; "
+            f"--max-cost-usd={args.max_cost_usd} is too low"
+        )
     api_key = os.environ.get("JEVIPHY_OPENROUTER_API_KEY")
     if not api_key:
         parser.error("JEVIPHY_OPENROUTER_API_KEY is required")
 
-    metadata = args.root / "isolated" / "approved-limits.json"
+    output_root = args.output_dir or args.root / "isolated"
+    if any((output_root / name).exists() for name in ("run-results.jsonl", "run-results.json")):
+        parser.error(f"output directory contains an earlier run: {output_root}")
+    metadata = output_root / "approved-limits.json"
     metadata.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     metadata.write_text(
         json.dumps(
@@ -231,7 +269,13 @@ def main() -> int:
         encoding="utf-8",
     )
     metadata.chmod(0o600)
-    run_batch(args.root, instance_ids, api_key, timeout_seconds=args.timeout_seconds)
+    run_batch(
+        args.root,
+        instance_ids,
+        api_key,
+        timeout_seconds=args.timeout_seconds,
+        output_root=output_root,
+    )
     return 0
 
 

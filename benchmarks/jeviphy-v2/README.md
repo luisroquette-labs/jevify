@@ -22,4 +22,13 @@ Run the contract tests with:
 mac-gate uv run --frozen pytest tests/test_jeviphy_eval_contract.py -q
 ```
 
-The network-agent batch uses `tools/jeviphy_product_batch.py`. It requires the three live-execution guardrails from the specification, a project-scoped key in `JEVIPHY_OPENROUTER_API_KEY`, and a private run root containing the frozen arm datasets and model configuration. The runner accepts an arm only when mini-swe-agent writes its trajectory. A provider or sandbox failure stops the serial batch immediately, even when the outer command exits zero.
+The network-agent batch uses `tools/jeviphy_product_batch.py`. It requires the three live-execution guardrails from the specification, a project-scoped key in `JEVIPHY_OPENROUTER_API_KEY`, and a private run root containing the frozen arm datasets and model configuration. Pass a fresh private directory through `--output-dir`; the runner refuses to mix an earlier run into new evidence. The approved OpenRouter ceiling must cover `agent.cost_limit` times the requested arm count. Modal sandbox spend is separate. The runner accepts an arm only when mini-swe-agent writes its trajectory. A provider or sandbox failure stops the serial batch immediately, even when the outer command exits zero.
+
+Invoke it from the repository root as a module:
+
+```bash
+uv run --frozen python -m tools.jeviphy_product_batch \
+  --root "$PRIVATE_ROOT" --cases "$PRIVATE_ROOT/isolated/remaining-cases.json" \
+  --output-dir "$PRIVATE_OUTPUT" --allow-network-agent \
+  --max-agent-calls 186 --max-cost-usd 14.88
+```
