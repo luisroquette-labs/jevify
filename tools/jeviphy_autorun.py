@@ -12,7 +12,8 @@ from typing import Literal
 
 import networkx as nx
 
-from graphify.serve import _read_graph
+from graphify.analyze import suggest_questions
+from graphify.serve import _communities_from_graph, _read_graph
 
 PROVIDER_ENV_KEYS = (
     "GEMINI_API_KEY",
@@ -141,3 +142,33 @@ def ensure_context(
     if repaired.status != "ready":
         raise ContextError(f"repair produced invalid graph: {repaired.diagnostic}")
     return repaired.context
+
+
+def _community_labels(graph_path: Path, communities: dict[int, list[str]]) -> dict[int, str]:
+    labels_path = graph_path.parent / ".graphify_labels.json"
+    try:
+        raw = json.loads(labels_path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            labels = {int(key): value for key, value in raw.items()
+                      if isinstance(value, str) and value.strip()}
+            if labels:
+                return labels
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
+    return {community: f"Community {community}" for community in communities}
+
+
+def select_question(graph: nx.Graph, graph_path: Path, question: str | None) -> str:
+    if question is not None and question.strip():
+        return question.strip()
+    communities = _communities_from_graph(graph)
+    suggestions = suggest_questions(
+        graph, communities, _community_labels(graph_path, communities), top_n=5,
+    )
+    usable = [item for item in suggestions
+              if isinstance(item.get("question"), str) and item["question"].strip()]
+    preferred = [item for item in usable if not item.get("low_confidence")]
+    selected = preferred or usable
+    if not selected:
+        raise ContextError("graph has no question signal; run graphify update .")
+    return selected[0]["question"].strip()

@@ -9,7 +9,7 @@ import pytest
 from networkx.readwrite import json_graph
 
 from tools import jeviphy_autorun as autorun
-from tools.jeviphy_autorun import ContextError, ensure_context, inspect_context
+from tools.jeviphy_autorun import ContextError, ensure_context, inspect_context, select_question
 
 
 def _commit(repo: Path) -> str:
@@ -143,3 +143,80 @@ def test_invalid_repaired_graph_is_rejected_without_retry(repo_with_graph, monke
     with pytest.raises(ContextError, match="repair produced invalid graph"):
         ensure_context(repo)
     assert len(calls) == 1
+
+
+def test_explicit_question_wins(repo_with_graph, monkeypatch):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path))
+    monkeypatch.setattr(autorun, "suggest_questions", lambda *args, **kwargs: pytest.fail())
+    assert select_question(graph, graph_path, " What calls run? ") == "What calls run?"
+
+
+def test_first_high_confidence_suggestion_wins(repo_with_graph, monkeypatch):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path))
+    monkeypatch.setattr(autorun, "suggest_questions", lambda *args, **kwargs: [
+        {"question": "low", "low_confidence": True},
+        {"question": "selected", "low_confidence": False},
+        {"question": "later", "low_confidence": False},
+    ])
+    assert select_question(graph, graph_path, None) == "selected"
+
+
+@pytest.mark.parametrize("question", [None, "", "   "])
+def test_selection_falls_back_to_first_low_confidence(repo_with_graph, monkeypatch, question):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path))
+    monkeypatch.setattr(autorun, "suggest_questions", lambda *args, **kwargs: [
+        {"question": "low", "low_confidence": True},
+    ])
+    assert select_question(graph, graph_path, question) == "low"
+
+
+@pytest.mark.parametrize("suggestions", [[], [{"type": "no_signal"}], [{"question": ""}]])
+def test_selection_rejects_graph_without_question_signal(
+    repo_with_graph, monkeypatch, suggestions,
+):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path))
+    monkeypatch.setattr(autorun, "suggest_questions", lambda *args, **kwargs: suggestions)
+    with pytest.raises(ContextError, match="graph has no question signal"):
+        select_question(graph, graph_path, None)
+
+
+def test_labels_use_valid_file_or_community_fallback(repo_with_graph, monkeypatch):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path))
+    seen = []
+    monkeypatch.setattr(autorun, "suggest_questions", lambda _g, _c, labels, **_k: (
+        seen.append(labels) or [{"question": "selected"}]
+    ))
+    select_question(graph, graph_path, None)
+    (graph_path.parent / ".graphify_labels.json").write_text('{"0":"Runtime"}')
+    select_question(graph, graph_path, None)
+    assert seen == [{0: "Community 0"}, {0: "Runtime"}]
+
+
+def test_question_selection_is_stable_across_hash_seeds(repo_with_graph):
+    repo, graph_path = repo_with_graph
+    graph = nx.Graph()
+    for index in range(3):
+        graph.add_node(f"n{index}", label=f"node{index}", type="function", community=index % 2,
+                       source_file="app.py", source_location="L1")
+    graph.add_edges_from([("n0", "n1"), ("n1", "n2")])
+    data = json_graph.node_link_data(graph, edges="links")
+    data["built_at_commit"] = _commit(repo)
+    graph_path.write_text(json.dumps(data), encoding="utf-8")
+    code = (
+        "from pathlib import Path; from graphify.serve import _read_graph; "
+        "from tools.jeviphy_autorun import select_question; "
+        f"p=Path({str(graph_path)!r}); print(select_question(_read_graph(str(p)), p, None))"
+    )
+    outputs = {
+        subprocess.check_output(
+            [sys.executable, "-c", code], text=True,
+            env={**os.environ, "PYTHONHASHSEED": str(seed)},
+        ).strip()
+        for seed in range(20)
+    }
+    assert len(outputs) == 1
