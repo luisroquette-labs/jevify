@@ -11,6 +11,18 @@ import networkx as nx
 from networkx.readwrite import json_graph
 
 
+def test_bare_invocation_is_autonomous_and_corpus_optional() -> None:
+    root = Path(__file__).resolve().parents[1]
+    skill = (root / "skills" / "jeviphy" / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "Use the current working directory as the target repository" in skill
+    assert "Do not ask the user to choose a question first" in skill
+    assert "A corpus is optional for a bare invocation" in skill
+    assert "Otherwise continue with the graph-only baseline" in skill
+    assert "approval persists for the current conversation" in skill
+    assert "without asking again or offering offline/live choices" in skill
+
+
 def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
     source = Path(__file__).resolve().parents[1] / "skills" / "jeviphy"
     installed = tmp_path / "installed" / "jeviphy"
