@@ -97,6 +97,16 @@ def select_canary_case(instance_ids: list[str], manifest_sha256: str) -> str:
     return ordered[int(manifest_sha256[:16], 16) % len(ordered)]
 
 
+def validate_run_root(output_root: Path, pins: dict) -> None:
+    pins_path = output_root / "run-pins.json"
+    if (output_root / "product-report.json").exists():
+        raise ValueError("sealed product report already exists")
+    if output_root.exists() and any(output_root.iterdir()) and not pins_path.exists():
+        raise ValueError("fresh output directory contains unknown files")
+    if pins_path.exists() and json.loads(pins_path.read_text(encoding="utf-8")) != pins:
+        raise ValueError("run pins differ from the existing run")
+
+
 def _reported_statuses(output: Path) -> list[str]:
     statuses: list[str] = []
     paths = list(output.glob("exit_statuses_*.yaml"))
@@ -599,8 +609,10 @@ def main() -> int:
         **execution_pins,
     }
     pins_path = output_root / "run-pins.json"
-    if pins_path.exists() and json.loads(pins_path.read_text(encoding="utf-8")) != pins:
-        parser.error("run pins differ from the existing run")
+    try:
+        validate_run_root(output_root, pins)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        parser.error(str(error))
     pins_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     pins_path.write_text(json.dumps(pins, sort_keys=True), encoding="utf-8")
     pins_path.chmod(0o600)

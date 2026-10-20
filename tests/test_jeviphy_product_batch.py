@@ -20,6 +20,7 @@ from tools.jeviphy_product_batch import (
     run_one,
     select_canary_case,
     seal_product_journal,
+    validate_run_root,
 )
 
 
@@ -222,6 +223,22 @@ def test_preview_needs_no_provider_key_and_creates_no_output(tmp_path, monkeypat
     assert preview["selected_case"] == "case-1"
     assert preview["swebench_version"] == "5.0.2"
     assert not output.exists()
+
+
+def test_run_root_rejects_unknown_or_sealed_state(tmp_path):
+    pins = {"jeviphy_commit": "a" * 40}
+    unknown = tmp_path / "unknown"
+    unknown.mkdir()
+    (unknown / "partial.txt").write_text("partial")
+    with pytest.raises(ValueError, match="unknown files"):
+        validate_run_root(unknown, pins)
+
+    sealed = tmp_path / "sealed"
+    sealed.mkdir()
+    (sealed / "run-pins.json").write_text(json.dumps(pins))
+    (sealed / "product-report.json").write_text("{}")
+    with pytest.raises(ValueError, match="sealed product report"):
+        validate_run_root(sealed, pins)
 
 
 def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):
