@@ -11,6 +11,7 @@ from tools.jeviphy_product_batch import (
     configured_model_name,
     configured_step_limit,
     evaluate_generated_arm,
+    execution_command_sha256,
     inspect_swebench_output,
     load_product_journal,
     main as product_main,
@@ -239,6 +240,16 @@ def test_run_root_rejects_unknown_or_sealed_state(tmp_path):
     (sealed / "product-report.json").write_text("{}")
     with pytest.raises(ValueError, match="sealed product report"):
         validate_run_root(sealed, pins)
+
+
+def test_execution_command_hash_is_canonical(tmp_path):
+    values = {
+        "root": tmp_path / "root", "cases": tmp_path / "cases.json",
+        "output_root": tmp_path / "out", "timeout_seconds": 30,
+        "max_agent_arms": 2, "max_cost_usd": Decimal("0.16"),
+        "max_new_arms": 2, "canary": True,
+    }
+    assert execution_command_sha256(**values) == execution_command_sha256(**dict(reversed(list(values.items()))))
 
 
 def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):

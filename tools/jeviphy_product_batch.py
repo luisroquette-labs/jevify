@@ -9,7 +9,6 @@ import platform
 import re
 import signal
 import subprocess
-import sys
 import time
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
@@ -105,6 +104,23 @@ def validate_run_root(output_root: Path, pins: dict) -> None:
         raise ValueError("fresh output directory contains unknown files")
     if pins_path.exists() and json.loads(pins_path.read_text(encoding="utf-8")) != pins:
         raise ValueError("run pins differ from the existing run")
+
+
+def execution_command_sha256(
+    *, root: Path, cases: Path, output_root: Path, timeout_seconds: int,
+    max_agent_arms: int, max_cost_usd: Decimal, max_new_arms: int, canary: bool,
+) -> str:
+    payload = {
+        "canary": canary,
+        "cases": str(cases.resolve()),
+        "max_agent_arms": max_agent_arms,
+        "max_cost_usd": format(max_cost_usd, "f"),
+        "max_new_arms": max_new_arms,
+        "output_root": str(output_root.resolve()),
+        "root": str(root.resolve()),
+        "timeout_seconds": timeout_seconds,
+    }
+    return sha256_bytes(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode())
 
 
 def _reported_statuses(output: Path) -> list[str]:
@@ -560,8 +576,15 @@ def main() -> int:
     ).strip()
     docker_version = subprocess.check_output(["docker", "--version"], text=True).strip()
     execution_pins = {
-        "command_sha256": sha256_bytes(
-            json.dumps(sys.argv[1:], separators=(",", ":")).encode()
+        "command_sha256": execution_command_sha256(
+            root=args.root,
+            cases=args.cases,
+            output_root=output_root,
+            timeout_seconds=args.timeout_seconds,
+            max_agent_arms=args.max_agent_calls,
+            max_cost_usd=Decimal(str(args.max_cost_usd)),
+            max_new_arms=args.max_new_arms,
+            canary=args.canary,
         ),
         "docker_version": docker_version,
         "machine_class": f"{os.cpu_count()} vCPU/{platform.machine()}",
