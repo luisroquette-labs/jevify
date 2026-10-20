@@ -590,7 +590,7 @@ def main() -> int:
         "machine_class": f"{os.cpu_count()} vCPU/{platform.machine()}",
         "max_agent_arms": args.max_agent_calls,
         "max_calls_per_arm": max_calls_per_arm,
-        "max_total_cost_usd": format(Decimal(str(args.max_cost_usd)), "f"),
+        "maximum_total_cost_usd": format(Decimal(str(args.max_cost_usd)), "f"),
         "mini_swe_agent_version": MINI_SWE_AGENT_VERSION,
         "model": model_name,
         "python_version": platform.python_version(),
