@@ -14,6 +14,7 @@ from tools.jeviphy_product_batch import (
     required_openrouter_budget,
     run_batch,
     run_one,
+    select_canary_case,
     seal_product_journal,
 )
 
@@ -153,6 +154,18 @@ def test_required_openrouter_budget_uses_per_agent_limit(tmp_path):
     config.write_text("agent:\n  cost_limit: 0.08\nmodel:\n  name: example\n", encoding="utf-8")
 
     assert required_openrouter_budget(config, 186) == Decimal("14.88")
+
+
+def test_canary_selection_is_deterministic_and_order_independent():
+    cases = ["case-3", "case-1", "case-2"]
+    selected = select_canary_case(cases, "f" * 64)
+    assert selected == select_canary_case(list(reversed(cases)), "f" * 64)
+    assert selected in cases
+
+
+def test_canary_selection_rejects_duplicate_cases():
+    with pytest.raises(ValueError, match="unique cases"):
+        select_canary_case(["case-1", "case-1"], "f" * 64)
 
 
 def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):

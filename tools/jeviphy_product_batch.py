@@ -69,6 +69,13 @@ def required_openrouter_budget(config: Path, agent_calls: int) -> Decimal:
     return per_call * agent_calls
 
 
+def select_canary_case(instance_ids: list[str], manifest_sha256: str) -> str:
+    if not instance_ids or len(instance_ids) != len(set(instance_ids)):
+        raise ValueError("canary selection requires unique cases")
+    ordered = sorted(instance_ids)
+    return ordered[int(manifest_sha256[:16], 16) % len(ordered)]
+
+
 def _reported_statuses(output: Path) -> list[str]:
     statuses: list[str] = []
     paths = list(output.glob("exit_statuses_*.yaml"))
@@ -452,6 +459,7 @@ def main() -> int:
     parser.add_argument("--max-agent-calls", type=int, default=0)
     parser.add_argument("--max-cost-usd", type=float, default=0)
     parser.add_argument("--max-new-arms", type=int, default=12)
+    parser.add_argument("--canary", action="store_true")
     args = parser.parse_args()
 
     validate_live_limits(
@@ -463,8 +471,14 @@ def main() -> int:
     manifest_path = args.root / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     cases = {case["id"]: case for case in manifest["cases"]}
-    if set(instance_ids) != set(cases):
+    if (
+        not isinstance(instance_ids, list)
+        or not all(isinstance(item, str) for item in instance_ids)
+        or len(instance_ids) != len(set(instance_ids))
+        or set(instance_ids) != set(cases)
+    ):
         parser.error("cases must contain the complete frozen manifest set")
+    manifest_sha256 = sha256_bytes(manifest_path.read_bytes())
     try:
         dataset_hashes = validate_arm_datasets(
             args.root / "graphify-train",
@@ -474,7 +488,8 @@ def main() -> int:
         )
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         parser.error(str(error))
-    required_calls = len(instance_ids) * 2
+    run_ids = [select_canary_case(instance_ids, manifest_sha256)] if args.canary else instance_ids
+    required_calls = len(run_ids) * 2
     if required_calls > args.max_agent_calls:
         parser.error(f"{required_calls} arms exceed --max-agent-calls={args.max_agent_calls}")
     if args.timeout_seconds < 1:
@@ -508,7 +523,7 @@ def main() -> int:
         ["git", "rev-parse", "HEAD"], cwd=candidate_repo, text=True
     ).strip()
     pins = {
-        "manifest_sha256": sha256_bytes(manifest_path.read_bytes()),
+        "manifest_sha256": manifest_sha256,
         "graphify_commit": manifest["graphify_commit"],
         "jeviphy_commit": candidate_sha,
         "graphify_dataset_sha256": dataset_hashes.graphify_sha256,
@@ -529,7 +544,7 @@ def main() -> int:
     metadata.chmod(0o600)
     records = run_batch(
         args.root,
-        instance_ids,
+        run_ids,
         api_key,
         timeout_seconds=args.timeout_seconds,
         output_root=output_root,
@@ -541,7 +556,7 @@ def main() -> int:
         seal_product_journal(
             output_root / "product-arms.jsonl",
             output_root / "product-report.json",
-            expected_ids=instance_ids,
+            expected_ids=run_ids,
             strata={key: value["stratum"] for key, value in cases.items()},
             pins=pins,
         )
