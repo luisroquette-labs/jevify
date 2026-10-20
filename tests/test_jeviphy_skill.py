@@ -54,7 +54,8 @@ def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
 
 def test_portable_skill_code_matches_project_code() -> None:
     root = Path(__file__).resolve().parents[1]
-    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jeviphy_autorun.py"):
+    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jeviphy_autorun.py",
+                 "jeviphy_provenance.py"):
         source = (root / "tools" / name).read_bytes()
         assert source == (root / "skills" / "jeviphy" / "scripts" / "tools" / name).read_bytes()
 
@@ -64,7 +65,8 @@ def test_pinned_commit_matches_portable_core() -> None:
     script = root / "skills" / "jeviphy" / "scripts" / "run.py"
     pinned = re.search(r"graphifyy @ git\+https://[^\s\"]+@([0-9a-f]{40})", script.read_text())
     assert pinned is not None
-    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py"):
+    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jeviphy_autorun.py",
+                 "jeviphy_provenance.py"):
         source = (root / "tools" / name).read_bytes()
         committed = subprocess.run(
             ["git", "show", f"{pinned.group(1)}:tools/{name}"],
