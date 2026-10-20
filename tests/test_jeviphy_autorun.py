@@ -231,8 +231,8 @@ def test_bare_auto_uses_current_repo_without_provider_key(
     (repo / "src").mkdir()
     monkeypatch.setattr(autorun, "select_question", lambda *_args: "Where is run?")
     monkeypatch.setattr(
-        "tools.jev_memory_pilot.query_unscoped_graphify",
-        lambda graph, question: f"answer:{graph.name}:{question}\n",
+        autorun, "query_graphify_exact",
+        lambda _loaded, graph, question: f"answer:{graph.name}:{question}\n",
     )
     real_get = os.environ.get
 
@@ -251,7 +251,7 @@ def test_bare_auto_uses_current_repo_without_provider_key(
 
 def test_auto_json_has_stable_envelope(repo_with_graph, monkeypatch, capsys):
     repo, _ = repo_with_graph
-    monkeypatch.setattr("tools.jev_memory_pilot.query_unscoped_graphify",
+    monkeypatch.setattr(autorun, "query_graphify_exact",
                         lambda *_args: "exact answer\n")
     assert auto(["--question", "What calls run?", "--json"], repo) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -266,6 +266,17 @@ def test_auto_json_has_stable_envelope(repo_with_graph, monkeypatch, capsys):
     }
 
 
+def test_in_process_graph_query_matches_direct_graphify(repo_with_graph):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path))
+    expected = subprocess.run(
+        [sys.executable, "-m", "graphify", "query", "run", "--graph", str(graph_path)],
+        capture_output=True, text=True, check=True,
+        env={**os.environ, "GRAPHIFY_QUERY_LOG_DISABLE": "1"},
+    ).stdout
+    assert autorun.query_graphify_exact(graph, graph_path, "run") == expected
+
+
 def test_ambiguous_or_mismatched_corpus_falls_back_once(
     repo_with_graph, tmp_path, monkeypatch, capsys,
 ):
@@ -274,7 +285,7 @@ def test_ambiguous_or_mismatched_corpus_falls_back_once(
     corpus.write_text(json.dumps({"observations": [], "cases": [
         {"id": "one", "question": "one"}, {"id": "two", "question": "two"},
     ]}))
-    monkeypatch.setattr("tools.jev_memory_pilot.query_unscoped_graphify",
+    monkeypatch.setattr(autorun, "query_graphify_exact",
                         lambda *_args: "fallback\n")
     assert auto(["--question", "explicit", "--corpus", str(corpus)], repo) == 0
     captured = capsys.readouterr()
@@ -308,7 +319,7 @@ def test_single_case_corpus_supplies_question_and_memory_mode(
 
 def test_live_without_corpus_skips_without_key_read(repo_with_graph, monkeypatch, capsys):
     repo, _ = repo_with_graph
-    monkeypatch.setattr("tools.jev_memory_pilot.query_unscoped_graphify",
+    monkeypatch.setattr(autorun, "query_graphify_exact",
                         lambda *_args: "offline\n")
     real_get = os.environ.get
 

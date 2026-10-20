@@ -13,7 +13,7 @@ from typing import Literal
 import networkx as nx
 
 from graphify.analyze import suggest_questions
-from graphify.serve import _communities_from_graph, _read_graph
+from graphify.serve import _communities_from_graph, _query_graph_text, _read_graph
 
 PROVIDER_ENV_KEYS = (
     "GEMINI_API_KEY",
@@ -185,6 +185,12 @@ def select_question(graph: nx.Graph, graph_path: Path, question: str | None) -> 
     return selected[0]["question"].strip()
 
 
+def query_graphify_exact(graph: nx.Graph, graph_path: Path, question: str) -> str:
+    return _query_graph_text(
+        graph, question, depth=2, graph_path=str(graph_path.resolve()), seeds=None,
+    ) + "\n"
+
+
 def _corpus_identity(path: Path) -> tuple[str, str, str]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict) or not isinstance(raw.get("cases"), list):
@@ -211,8 +217,6 @@ def _corpus_identity(path: Path) -> tuple[str, str, str]:
 def auto(argv: list[str], cwd: Path) -> int:
     """Run a source-verified query with repository and question discovery."""
     import argparse
-
-    from tools.jev_memory_pilot import PilotConfig, query_unscoped_graphify, run_pilot
 
     parser = argparse.ArgumentParser(prog="jeviphy auto")
     parser.add_argument("--question")
@@ -246,6 +250,8 @@ def auto(argv: list[str], cwd: Path) -> int:
     )
     cost = None
     if corpus_identity and args.corpus is not None:
+        from tools.jev_memory_pilot import PilotConfig, run_pilot
+
         case_id, project, _ = corpus_identity
         try:
             outcome = run_pilot(PilotConfig(
@@ -265,7 +271,7 @@ def auto(argv: list[str], cwd: Path) -> int:
             elif outcome.memory_applied:
                 mode = "memory_offline"
     if answer is None:
-        answer = query_unscoped_graphify(context.graph, question)
+        answer = query_graphify_exact(graph, context.graph, question)
     result = AutoResult(
         1, mode, str(context.repo), str(context.graph), question, live_status, answer,
     )

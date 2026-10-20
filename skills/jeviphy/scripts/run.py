@@ -14,10 +14,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from tools.jev_memory_pilot import main as query_main
 from tools.jeviphy_autorun import ContextError, auto, inspect_context
-from tools.jeviphy_eval_contract import load_manifest
-from tools.jeviphy_product_eval import balanced_order, run_retrieval_pair
 
 
 def head(repo: Path) -> str:
@@ -46,6 +43,9 @@ def doctor(argv: list[str]) -> int:
 
 
 def benchmark(argv: list[str]) -> int:
+    from tools.jeviphy_eval_contract import load_manifest
+    from tools.jeviphy_product_eval import balanced_order, run_retrieval_pair
+
     parser = argparse.ArgumentParser(prog="jeviphy benchmark")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--case-id", required=True)
@@ -92,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
     if arguments[0] == "doctor":
         return doctor(arguments[1:])
     if arguments[0] == "query":
+        from tools.jev_memory_pilot import main as query_main
+
         return query_main(arguments[1:])
     if arguments[0] == "benchmark":
         return benchmark(arguments[1:])
