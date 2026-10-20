@@ -142,9 +142,9 @@ def run_one(
         "-c",
         "swebench.yaml",
         "-c",
-        "swebench_modal.yaml",
-        "-c",
         str(root / "mini-openrouter.yaml"),
+        "--environment-class",
+        "docker",
     ]
     env = os.environ.copy()
     env["OPENROUTER_API_KEY"] = api_key
