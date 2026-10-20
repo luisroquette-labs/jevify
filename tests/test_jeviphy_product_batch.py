@@ -50,6 +50,17 @@ def test_zero_exit_with_image_build_error_is_infrastructure_failure(tmp_path):
     assert "billing cycle spend limit" in result.diagnostic
 
 
+def test_disk_exhaustion_is_infrastructure_failure(tmp_path):
+    output = tmp_path / "case-1"
+    output.mkdir()
+    (output / "runner.log").write_text("OSError: No space left on device", encoding="utf-8")
+
+    result = inspect_swebench_output(output, "case-1", returncode=0)
+
+    assert result.state == "infrastructure_failed"
+    assert result.diagnostic == "No space left on device"
+
+
 def test_zero_exit_without_trajectory_is_failure(tmp_path):
     output = tmp_path / "case-1"
     output.mkdir()
@@ -365,6 +376,9 @@ def test_completed_generation_uses_official_swebench_report(tmp_path, monkeypatc
     captured = {}
 
     def run(command, **kwargs):
+        if command[:3] == ["docker", "system", "prune"]:
+            captured["pruned"] = True
+            return type("Completed", (), {"returncode": 0})()
         captured["command"] = command
         run_id = command[-1]
         report = Path(kwargs["cwd"]) / f"model.{run_id}.json"
@@ -381,6 +395,7 @@ def test_completed_generation_uses_official_swebench_report(tmp_path, monkeypatc
     )
 
     assert captured["command"][:4] == ["uvx", "--from", "swebench==5.0.2", "python"]
+    assert captured["pruned"] is True
     assert captured["command"][-1].startswith("jeviphy-aaaaaaaaaaaa-graphify-")
     assert record.success is True
     assert record.resolved is True
@@ -395,3 +410,19 @@ def test_official_eval_rejects_unpinned_candidate_sha(tmp_path):
             30,
             "short",
         )
+
+
+def test_failed_generation_prunes_docker(tmp_path, monkeypatch):
+    pruned = []
+    monkeypatch.setattr("tools.jeviphy_product_batch._prune_docker", lambda: pruned.append(True))
+
+    record = evaluate_generated_arm(
+        tmp_path,
+        tmp_path / "out",
+        ArmResult("graphify", "case-1", "failed", 1, False, 1.0, "failed"),
+        30,
+        "a" * 40,
+    )
+
+    assert record.status == "failed"
+    assert pruned == [True]

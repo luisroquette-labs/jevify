@@ -26,6 +26,7 @@ from tools.jeviphy_product_dataset import validate_arm_datasets
 INFRASTRUCTURE_MARKERS = (
     "billing cycle spend limit",
     "ImageBuildError",
+    "No space left on device",
     "Sandbox creation failed",
     "insufficient credits",
 )
@@ -250,6 +251,15 @@ def _append_product_record(path: Path, record: ProductArmRecord) -> None:
         os.fsync(stream.fileno())
 
 
+def _prune_docker() -> None:
+    subprocess.run(
+        ["docker", "system", "prune", "--all", "--force"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
 def load_product_journal(path: Path) -> list[ProductArmRecord]:
     records: list[ProductArmRecord] = []
     seen: set[tuple[str, str]] = set()
@@ -337,6 +347,7 @@ def evaluate_generated_arm(
 ) -> ProductArmRecord:
     output = output_root / result.arm / result.instance_id
     if result.state != "completed":
+        _prune_docker()
         return _failed_product_record(result, output)
     prediction = output / "preds.json"
     trajectory = _trajectory_path(output, result.instance_id)
@@ -387,6 +398,8 @@ def evaluate_generated_arm(
             output,
         )
         return ProductArmRecord(**{**asdict(failed), "evaluation_seconds": elapsed})
+    finally:
+        _prune_docker()
     elapsed = round(time.monotonic() - started, 3)
     report = evaluation_root / "logs" / "evaluation" / run_id / "results.json"
     if not report.is_file():
