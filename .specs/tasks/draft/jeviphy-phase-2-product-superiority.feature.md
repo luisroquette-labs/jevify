@@ -171,6 +171,14 @@ The repository publishes the manifest schema, fixture generator, runner, scorer,
 **Then** completed pairs are retained and missing pairs run
 **But** any changed pin rejects the journal.
 
+### Scenario: Provider failure cannot masquerade as completion
+
+**Given** the agent command exits zero but produces no trajectory
+**And** its per-instance status reports an infrastructure error
+**When** the product batch inspects the arm
+**Then** the arm is recorded as `infrastructure_failed`
+**And** the batch stops before starting another paid arm.
+
 ### Scenario: Superiority claim is blocked
 
 **Given** retrieval improves but the product success confidence interval crosses zero

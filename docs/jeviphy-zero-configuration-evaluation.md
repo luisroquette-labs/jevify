@@ -30,4 +30,4 @@ A bare invocation can resolve the containing Git repository, choose a question, 
 
 ## Separate product benchmark
 
-The earlier frozen product-task run remains separate: Jeviphy candidate `99b944748350f4c341ffb3ae5320df2e38269959`, 186 arm rows / 93 pairs, 184 completed processes, two timeouts, and no recorded trajectories. It cannot establish answer quality or product superiority and is not pooled with this runner result. A fresh product-task run is required before any broader claim.
+The earlier frozen product-task run remains separate: Jeviphy candidate `99b944748350f4c341ffb3ae5320df2e38269959`, 186 arm rows / 93 pairs, 184 zero-exit wrapper processes, two timeouts, and no recorded trajectories. Post-run inspection found `ImageBuildError` in all 184 zero-exit arms because Modal had reached its billing-cycle spend limit. The old wrapper misclassified those internal failures as completed. This run contains no product evidence, is not pooled with the runner result above, and must not be used for speed or quality claims.
