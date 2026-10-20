@@ -21,6 +21,8 @@ def test_bare_invocation_is_autonomous_and_corpus_optional() -> None:
     assert "Otherwise continue with the graph-only baseline" in skill
     assert "approval persists for the current conversation" in skill
     assert "without asking again or offering offline/live choices" in skill
+    assert "accept the runner's baseline fallback" in skill
+    assert "Do not stop the invocation to request a new key" in skill
 
 
 def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
