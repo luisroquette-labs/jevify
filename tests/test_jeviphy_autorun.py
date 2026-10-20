@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -322,3 +323,99 @@ def test_live_without_corpus_skips_without_key_read(repo_with_graph, monkeypatch
     captured = capsys.readouterr()
     assert captured.out.endswith("offline\n")
     assert captured.err == "live_enrichment=skipped\n"
+
+
+def _private_corpus(tmp_path: Path) -> Path:
+    tmp_path.chmod(0o700)
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(json.dumps({
+        "observations": [{"id": "o1", "project": "demo", "date": "2026-10-19",
+                          "summary": "run is implemented in app.py", "source_ref": "reviewed-o1",
+                          "source_paths": ["app.py"]}],
+        "cases": [{"id": "q1", "question": "Where is run?",
+                   "relevant_node_ids": ["app.py::run"],
+                   "relevant_pairs": [["app.py::run", "o1"]],
+                   "observation_ids": ["o1"]}],
+    }))
+    corpus.chmod(0o600)
+    return corpus
+
+
+@pytest.mark.parametrize("failure", [
+    TimeoutError(),
+    urllib.error.HTTPError("https://example.invalid", 401, "expired", {}, None),
+    urllib.error.HTTPError("https://example.invalid", 429, "limited", {}, None),
+    urllib.error.HTTPError("https://example.invalid", 302, "redirect blocked", {}, None),
+    ValueError("malformed response"),
+    ValueError("Jev response exceeds 1 MiB"),
+])
+def test_live_failure_returns_offline_answer_once(
+    repo_with_graph, tmp_path, monkeypatch, capsys, failure,
+):
+    from unittest.mock import patch
+
+    repo, _ = repo_with_graph
+    corpus = _private_corpus(tmp_path)
+    assert auto(["--corpus", str(corpus), "--json"], repo) == 0
+    offline = json.loads(capsys.readouterr().out)["answer"]
+    monkeypatch.setenv("JEV_MEMORY_PILOT_API_KEY", "secret-canary")
+    with patch("tools.jev_memory_pilot_api.call_jev", side_effect=failure) as post:
+        assert auto(["--corpus", str(corpus), "--json", "--live",
+                     "--approved-paid-use", "--max-requests", "1"], repo) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert post.call_count == 1
+    assert payload["answer"] == offline
+    assert payload["mode"] == "memory_offline"
+    assert payload["live_enrichment"] == "skipped"
+    assert captured.err == "live_enrichment=skipped\n"
+    assert "secret-canary" not in captured.out + captured.err
+
+
+def test_live_missing_key_and_missing_cost_fall_back(repo_with_graph, tmp_path, monkeypatch, capsys):
+    from unittest.mock import patch
+
+    repo, _ = repo_with_graph
+    corpus = _private_corpus(tmp_path)
+    monkeypatch.delenv("JEV_MEMORY_PILOT_API_KEY", raising=False)
+    with patch("tools.jev_memory_pilot_api.call_jev") as post:
+        assert auto(["--corpus", str(corpus), "--json", "--live",
+                     "--approved-paid-use", "--max-requests", "1"], repo) == 0
+    post.assert_not_called()
+    assert capsys.readouterr().err == "live_enrichment=skipped\n"
+
+    monkeypatch.setenv("JEV_MEMORY_PILOT_API_KEY", "test-key")
+    response = {"model": "typesafe/jev-1.14", "usage": {}, "answers": {
+        "p000": {"type": "choice", "choice": "relevant", "probabilities": {
+            "relevant": 1.0, "unrelated": 0.0, "insufficient_evidence": 0.0,
+        }},
+    }}
+    with patch("tools.jev_memory_pilot_api.call_jev", return_value=response) as post:
+        assert auto(["--corpus", str(corpus), "--json", "--live",
+                     "--approved-paid-use", "--max-requests", "1"], repo) == 0
+    assert post.call_count == 1
+    assert capsys.readouterr().err == "live_enrichment=skipped\n"
+
+
+def test_valid_live_response_reports_applied_and_cost(
+    repo_with_graph, tmp_path, monkeypatch, capsys,
+):
+    from unittest.mock import patch
+
+    repo, _ = repo_with_graph
+    corpus = _private_corpus(tmp_path)
+    monkeypatch.setenv("JEV_MEMORY_PILOT_API_KEY", "test-key")
+    response = {"model": "typesafe/jev-1.14", "usage": {"cost": 0.000001}, "answers": {
+        "p000": {"type": "choice", "choice": "relevant", "probabilities": {
+            "relevant": 1.0, "unrelated": 0.0, "insufficient_evidence": 0.0,
+        }},
+    }}
+    with patch("tools.jev_memory_pilot_api.call_jev", return_value=response) as post:
+        assert auto(["--corpus", str(corpus), "--json", "--live",
+                     "--approved-paid-use", "--max-requests", "1"], repo) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert post.call_count == 1
+    assert payload["mode"] == "memory_live"
+    assert payload["live_enrichment"] == "applied"
+    assert captured.err == "live_enrichment=applied\nJev actual cost: USD 0.00000100\n"
