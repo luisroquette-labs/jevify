@@ -161,7 +161,7 @@ A zero-configuration release candidate passes only when:
 1. all 30 frozen runner cases across at least 6 repositories complete with stdin closed and no `interaction_required` outcome;
 2. no valid-repository case asks for a repository, question, corpus, mode, or credential;
 3. all no-corpus outputs match direct Graphify output after removing the audit header;
-4. median zero-configuration overhead over direct Graphify is at most 10%, and p95 overhead is at most 15%;
+4. median matched-pair zero-configuration overhead over direct Graphify is at most 10%, and p95 matched-pair overhead is at most 15%;
 5. missing/stale/corrupt graph cases repair automatically, while repair failure, outside-Git, malformed corpus, and expired-key cases emit the specified bounded outcomes;
 6. clean-home installs pass for Claude Code and Codex on macOS and Ubuntu, and static host-contract tests prove both skills delegate bare invocation to `auto`; and
 7. the frozen product benchmark remains a separate baseline and is rerun for this candidate before any superiority claim.

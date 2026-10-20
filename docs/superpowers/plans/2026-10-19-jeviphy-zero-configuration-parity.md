@@ -452,7 +452,7 @@ git commit -m "feat: unify bare Jeviphy across Claude and Codex"
 
 - [ ] **Step 1: Write manifest and scorer tests**
 
-Test the 30-case/6-repository minimum, complete paired denominators, exact fallback, diagnostics, median/p95 overhead, and `interaction_required == 0`. Missing, timed-out, or malformed records produce `insufficient_evidence`, never disappear.
+Test the 30-case/6-repository minimum, complete paired denominators, exact fallback, diagnostics, median/p95 of matched-pair overheads, and `interaction_required == 0`. Never divide independently pooled latency percentiles across repositories with different runtimes. Missing, timed-out, or malformed records produce `insufficient_evidence`, never disappear.
 
 - [ ] **Step 2: Freeze cases and denominators before execution**
 
