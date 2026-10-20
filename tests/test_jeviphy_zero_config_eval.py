@@ -8,6 +8,18 @@ from tools.jeviphy_zero_config_eval import score, validate_manifest
 
 
 MANIFEST = Path(__file__).resolve().parents[1] / "benchmarks/jeviphy-zero-config/manifest.json"
+PUBLIC_SCORE = Path(__file__).resolve().parents[1] / "benchmarks/jeviphy-zero-config/results/score.json"
+
+
+def test_public_score_is_a_complete_passing_aggregate():
+    payload = json.loads(PUBLIC_SCORE.read_text(encoding="utf-8"))
+    assert payload["status"] == "pass"
+    assert payload["attempts"] == payload["successes"] == 30
+    assert payload["exact_matches"] == payload["exact_outputs"] == 24
+    assert payload["interaction_required"] == 0
+    assert payload["failed_cases"] == []
+    assert payload["median_overhead_fraction"] <= 0.10
+    assert payload["p95_overhead_fraction"] <= 0.15
 
 
 def _manifest():

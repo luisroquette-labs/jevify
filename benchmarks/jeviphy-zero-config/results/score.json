@@ -1,0 +1,17 @@
+{
+  "attempts": 30,
+  "exact_matches": 24,
+  "exact_outputs": 24,
+  "failed_cases": [],
+  "interaction_required": 0,
+  "jeviphy_commit": "625e3fb6609c08b314df777b1f041bf623620704",
+  "journal_sha256": "54efe1db23922e19590d7970325b812c8a7f8fa48eee4e75e3e9dc64b031770f",
+  "manifest_sha256": "015963128a3174186416ee124e18599908f1e048f5570d06b2b436dd4975c6db",
+  "measured_pairs": 90,
+  "median_overhead_fraction": 0.013439595298631035,
+  "p95_overhead_fraction": 0.06528735793028195,
+  "schema_version": 1,
+  "source_score_sha256": "734b33f26e6a7606c49e084d1462bdccf7d29a29393095531295538bf118852a",
+  "status": "pass",
+  "successes": 30
+}

@@ -105,7 +105,10 @@ def assemble_bundle(inputs: EvidenceInputs) -> dict:
     )
     zero = _read(
         inputs.zero_config,
-        {"schema_version", "jeviphy_commit", "status", "attempts", "successes"},
+        {"schema_version", "jeviphy_commit", "manifest_sha256", "journal_sha256",
+         "source_score_sha256", "status", "attempts", "successes", "exact_outputs",
+         "exact_matches", "interaction_required", "measured_pairs", "median_overhead_fraction",
+         "p95_overhead_fraction", "failed_cases"},
     )
     install = _read(
         inputs.install,
