@@ -37,3 +37,5 @@ uv run --frozen python -m tools.jeviphy_product_batch \
 
 Add `--preview` to validate every input and print the frozen execution envelope
 without reading a provider key, creating the output directory, or making a paid call.
+The runner pins mini-swe-agent `2.4.6` and SWE-bench `5.0.2`; the run journal also
+pins Python, Docker, machine class, model, command, candidate, and dataset hashes.

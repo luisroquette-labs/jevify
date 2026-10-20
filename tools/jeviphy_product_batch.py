@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import re
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
@@ -35,6 +37,8 @@ INFRASTRUCTURE_STATUSES = {
     "RateLimitError",
     "SandboxError",
 }
+MINI_SWE_AGENT_VERSION = "2.4.6"
+SWEBENCH_VERSION = "5.0.2"
 
 
 @dataclass(frozen=True)
@@ -156,7 +160,7 @@ def run_one(
     command = [
         "uvx",
         "--from",
-        "mini-swe-agent[full]",
+        f"mini-swe-agent[full]=={MINI_SWE_AGENT_VERSION}",
         "mini-extra",
         "swebench",
         "--subset",
@@ -317,7 +321,7 @@ def evaluate_generated_arm(
     command = [
         "uvx",
         "--from",
-        "swebench",
+        f"swebench=={SWEBENCH_VERSION}",
         "python",
         "-m",
         "swebench.harness.run_evaluation",
@@ -544,10 +548,25 @@ def main() -> int:
     candidate_sha = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=candidate_repo, text=True
     ).strip()
+    docker_version = subprocess.check_output(["docker", "--version"], text=True).strip()
+    execution_pins = {
+        "command_sha256": sha256_bytes(
+            json.dumps(sys.argv[1:], separators=(",", ":")).encode()
+        ),
+        "docker_version": docker_version,
+        "machine_class": f"{os.cpu_count()} vCPU/{platform.machine()}",
+        "max_agent_arms": args.max_agent_calls,
+        "max_calls_per_arm": max_calls_per_arm,
+        "max_total_cost_usd": format(Decimal(str(args.max_cost_usd)), "f"),
+        "mini_swe_agent_version": MINI_SWE_AGENT_VERSION,
+        "model": model_name,
+        "python_version": platform.python_version(),
+        "swebench_version": SWEBENCH_VERSION,
+        "timeout_seconds": args.timeout_seconds,
+    }
     if args.preview:
         if output_root.exists():
             parser.error(f"preview output path already exists: {output_root}")
-        docker_version = subprocess.check_output(["docker", "--version"], text=True).strip()
         preview = {
             "arm_count": required_calls,
             "candidate_sha": candidate_sha,
@@ -561,6 +580,7 @@ def main() -> int:
             "model": model_name,
             "output_path": str(output_root),
             "per_arm_cost_limit_usd": format(required_cost / required_calls, "f"),
+            **execution_pins,
         }
         if args.canary:
             preview["selected_case"] = run_ids[0]
@@ -576,6 +596,7 @@ def main() -> int:
         "jeviphy_commit": candidate_sha,
         "graphify_dataset_sha256": dataset_hashes.graphify_sha256,
         "jeviphy_dataset_sha256": dataset_hashes.jeviphy_sha256,
+        **execution_pins,
     }
     pins_path = output_root / "run-pins.json"
     if pins_path.exists() and json.loads(pins_path.read_text(encoding="utf-8")) != pins:

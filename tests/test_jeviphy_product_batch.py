@@ -218,7 +218,9 @@ def test_preview_needs_no_provider_key_and_creates_no_output(tmp_path, monkeypat
     preview = json.loads(capsys.readouterr().out)
     assert preview["arm_count"] == 2
     assert preview["maximum_internal_model_calls"] == 160
+    assert preview["mini_swe_agent_version"] == "2.4.6"
     assert preview["selected_case"] == "case-1"
+    assert preview["swebench_version"] == "5.0.2"
     assert not output.exists()
 
 
@@ -239,6 +241,7 @@ def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):
     run_one(tmp_path, tmp_path / "output", "graphify", "case-1", "secret", 1)
 
     assert captured["command"][-2:] == ["--environment-class", "docker"]
+    assert captured["command"][2] == "mini-swe-agent[full]==2.4.6"
     assert "swebench_modal.yaml" not in captured["command"]
 
 
@@ -342,6 +345,6 @@ def test_completed_generation_uses_official_swebench_report(tmp_path, monkeypatc
         ArmResult("graphify", "case-1", "completed", 0, True, 1.0), 30,
     )
 
-    assert captured["command"][:4] == ["uvx", "--from", "swebench", "python"]
+    assert captured["command"][:4] == ["uvx", "--from", "swebench==5.0.2", "python"]
     assert record.success is True
     assert record.resolved is True
