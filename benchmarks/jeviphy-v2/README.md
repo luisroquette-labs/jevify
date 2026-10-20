@@ -21,3 +21,5 @@ Run the contract tests with:
 ```bash
 mac-gate uv run --frozen pytest tests/test_jeviphy_eval_contract.py -q
 ```
+
+The network-agent batch uses `tools/jeviphy_product_batch.py`. It requires the three live-execution guardrails from the specification, a project-scoped key in `JEVIPHY_OPENROUTER_API_KEY`, and a private run root containing the frozen arm datasets and model configuration. The runner accepts an arm only when mini-swe-agent writes its trajectory. A provider or sandbox failure stops the serial batch immediately, even when the outer command exits zero.
