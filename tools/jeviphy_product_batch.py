@@ -36,6 +36,7 @@ INFRASTRUCTURE_STATUSES = {
     "ImageBuildError",
     "RateLimitError",
     "SandboxError",
+    "TimeoutExpired",
 }
 MINI_SWE_AGENT_VERSION = "2.4.6"
 SWEBENCH_VERSION = "5.0.2"
@@ -77,6 +78,13 @@ def configured_step_limit(config: Path) -> int:
     match = re.search(r"(?m)^\s{2}step_limit:\s*([0-9]+)\s*$", config.read_text(encoding="utf-8"))
     if not match or int(match.group(1)) < 1:
         raise ValueError(f"agent.step_limit must be positive in {config}")
+    return int(match.group(1))
+
+
+def configured_pull_timeout(config: Path) -> int:
+    match = re.search(r"(?m)^\s{2}pull_timeout:\s*([0-9]+)\s*$", config.read_text(encoding="utf-8"))
+    if not match or int(match.group(1)) < 1:
+        raise ValueError(f"environment.pull_timeout must be positive in {config}")
     return int(match.group(1))
 
 
@@ -586,6 +594,7 @@ def main() -> int:
             config_path, required_calls
         )
         max_calls_per_arm = configured_step_limit(config_path)
+        docker_pull_timeout = configured_pull_timeout(config_path)
         model_name = configured_model_name(config_path)
     except (OSError, ValueError) as error:
         parser.error(str(error))
@@ -620,6 +629,7 @@ def main() -> int:
             agent_config_sha256=sha256_bytes(config_path.read_bytes()),
         ),
         "docker_version": docker_version,
+        "docker_pull_timeout_seconds": docker_pull_timeout,
         "machine_class": f"{os.cpu_count()} vCPU/{platform.machine()}",
         "max_agent_arms": args.max_agent_calls,
         "max_calls_per_arm": max_calls_per_arm,

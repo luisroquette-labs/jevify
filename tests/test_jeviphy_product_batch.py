@@ -10,6 +10,7 @@ from tools.jeviphy_product_eval import sha256_bytes
 from tools.jeviphy_product_batch import (
     ArmResult,
     configured_model_name,
+    configured_pull_timeout,
     configured_step_limit,
     evaluate_generated_arm,
     execution_command_sha256,
@@ -60,6 +61,21 @@ def test_disk_exhaustion_is_infrastructure_failure(tmp_path):
 
     assert result.state == "infrastructure_failed"
     assert result.diagnostic == "No space left on device"
+
+
+def test_container_start_timeout_is_infrastructure_failure(tmp_path):
+    output = tmp_path / "case-1"
+    _write_status(output, "TimeoutExpired")
+    (output / "runner.log").write_text(
+        "docker run timed out after 120 seconds",
+        encoding="utf-8",
+    )
+
+    result = inspect_swebench_output(output, "case-1", returncode=0)
+
+    assert result.state == "infrastructure_failed"
+    assert result.trajectory is False
+    assert result.diagnostic == "TimeoutExpired"
 
 
 def test_zero_exit_without_trajectory_is_failure(tmp_path):
@@ -179,12 +195,14 @@ def test_batch_writes_to_separate_output_root(tmp_path, monkeypatch):
 def test_required_openrouter_budget_uses_per_agent_limit(tmp_path):
     config = tmp_path / "mini-openrouter.yaml"
     config.write_text(
-        "agent:\n  cost_limit: 0.08\n  step_limit: 80\nmodel:\n  model_name: example\n",
+        "agent:\n  cost_limit: 0.08\n  step_limit: 80\nmodel:\n  model_name: example\n"
+        "environment:\n  pull_timeout: 900\n",
         encoding="utf-8",
     )
 
     assert required_openrouter_budget(config, 186) == Decimal("14.88")
     assert configured_step_limit(config) == 80
+    assert configured_pull_timeout(config) == 900
     assert configured_model_name(config) == "example"
 
 
@@ -213,6 +231,7 @@ def test_preview_needs_no_provider_key_and_creates_no_output(tmp_path, monkeypat
     cases.write_text('["case-1"]')
     (root / "mini-openrouter.yaml").write_text(
         'agent:\n  cost_limit: 0.08\n  step_limit: 80\nmodel:\n  model_name: "example/model"\n'
+        'environment:\n  pull_timeout: 900\n'
     )
     monkeypatch.delenv("JEVIPHY_OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(
@@ -245,6 +264,7 @@ def test_preview_needs_no_provider_key_and_creates_no_output(tmp_path, monkeypat
     )
     assert preview["maximum_internal_model_calls"] == 160
     assert preview["mini_swe_agent_version"] == "2.4.6"
+    assert preview["docker_pull_timeout_seconds"] == 900
     assert preview["selected_case"] == "case-1"
     assert preview["swebench_version"] == "5.0.2"
     assert not output.exists()
