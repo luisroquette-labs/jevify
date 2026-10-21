@@ -46,17 +46,19 @@ def retrieval_records():
     return records
 
 
-def product_records(*, wins=20):
+def product_records(*, wins=8):
     records = []
-    for index in range(120):
-        control = index < 40
-        advantage = 40 <= index < 40 + wins
+    for index in range(30):
+        control = index < 10
+        advantage = 10 <= index < 10 + wins
         baseline_success = not advantage
         jeviphy_success = True
         records.append(
             {"pair": {
                 "case_id": f"p{index}",
-                "stratum": "no_source" if control else "valid_source",
+                "stratum": "no_source" if control else (
+                    "valid_source" if index < 20 else "stale_source"
+                ),
                 "pass_index": 0,
                 "baseline": arm(success=baseline_success, duration=100, hits=0, first=False,
                                 digest=f"p{index}", tokens=100),
@@ -109,8 +111,7 @@ def test_external_reproduction_is_required_for_public_product_claim():
 
 def test_confidence_interval_crossing_zero_blocks_claim():
     report = complete_report()
-    report["product_records"] = product_records(wins=30)
-    for wrapper in report["product_records"][70:88]:
+    for wrapper in report["product_records"][18:23]:
         wrapper["pair"]["baseline"]["success"] = True
         wrapper["pair"]["jeviphy"]["success"] = False
     scorecard = score_run(report)

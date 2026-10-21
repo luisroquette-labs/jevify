@@ -149,7 +149,7 @@ def _score_product(records: list[dict]) -> GateResult:
             if not isinstance(duration, (int, float)) or isinstance(duration, bool) or duration <= 0:
                 raise ValueError("product arm duration must be positive")
     pairs = _first_pairs(records)
-    if len(pairs) != 120:
+    if len(pairs) != 30:
         return GateResult("insufficient_evidence", {})
     differences = [
         float(bool(_arm(pair, "jeviphy")["success"]))

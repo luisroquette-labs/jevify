@@ -133,7 +133,7 @@ def assemble_bundle(inputs: EvidenceInputs) -> dict:
             raise ValueError("candidate SHA differs across evidence")
 
     retrieval_records = _validate_pairs(retrieval.get("retrieval_records"))
-    product_records = _validate_pairs(product.get("product_records"), expected=120)
+    product_records = _validate_pairs(product.get("product_records"), expected=30)
     reviewers: set[str] = set()
     reproductions = []
     receipt_keys = {

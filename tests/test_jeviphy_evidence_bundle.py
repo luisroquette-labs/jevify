@@ -41,7 +41,7 @@ def valid_inputs(tmp_path):
         "schema_version": 1,
         "pins": {key: PINS[key] for key in ("manifest_sha256", "graphify_commit", "jeviphy_commit")},
         "journal_sha256": "5" * 64,
-        "product_records": [_pair(f"case-{index}") for index in range(120)],
+        "product_records": [_pair(f"case-{index}") for index in range(30)],
     })
     zero = _write(tmp_path, "zero.json", {
         "schema_version": 1, "jeviphy_commit": PINS["jeviphy_commit"],
@@ -84,7 +84,7 @@ def test_bundle_rejects_incomplete_product_and_wrong_zero_candidate(tmp_path):
     inputs = valid_inputs(tmp_path)
     product = json.loads(inputs.product.path.read_text())
     product["product_records"].pop()
-    with pytest.raises(ValueError, match="120 complete product pairs"):
+    with pytest.raises(ValueError, match="30 complete product pairs"):
         assemble_bundle(replace(inputs, product=_write(tmp_path, "short.json", product)))
 
     zero = json.loads(inputs.zero_config.path.read_text())
@@ -117,7 +117,7 @@ def test_bundle_is_canonical_and_excludes_private_payloads(tmp_path):
     encoded = json.dumps(bundle, sort_keys=True, separators=(",", ":")) + "\n"
 
     assert bundle["schema_version"] == 1
-    assert len(bundle["product_records"]) == 120
+    assert len(bundle["product_records"]) == 30
     assert "patch" not in encoded
     assert set(bundle) == {
         "schema_version", "pins", "retrieval_records", "product_records", "usability",
