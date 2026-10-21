@@ -64,7 +64,7 @@ If product success is equal but efficiency passes, the allowed claim is limited 
 
 ### PG1 — Immutable candidate and inputs
 
-The run records the Jeviphy SHA, Graphify SHA, manifest SHA-256, agent-config SHA-256, model identifier, mini-swe-agent version, SWE-bench version, Python version, Docker version, machine class, command hash, and cost ceilings. Any mismatch aborts resume or aggregation.
+The run records the Jeviphy SHA, Graphify SHA, manifest SHA-256, agent-config SHA-256, model identifier, mini-swe-agent version, SWE-bench version, Python version, Docker version, machine class, command hash, chunk size, and cost stop thresholds. Any mismatch aborts resume or aggregation.
 
 The Graphify and Jeviphy datasets must have identical instance IDs, repository pins, test patches, fail-to-pass tests, pass-to-pass tests, environment images, and metadata. A checked-in whitelist defines the only permitted arm difference: the Jeviphy problem statement may add bounded source-backed context. The validator rejects gold patch text, gold symbols, test patch text, or fields outside that whitelist.
 
@@ -90,15 +90,17 @@ The default path remains offline. A live run requires all of:
 - a project-scoped provider credential;
 - explicit approval in the current conversation before execution.
 
-The runner sets mini-swe-agent global call and cost limits from the same ceilings. The frozen agent configuration sets `environment.pull_timeout: 900` so cold SWE-bench images can finish downloading before Docker startup is judged unavailable. Provider and Docker failures stop the serial run without retrying an uncertain write.
+The runner sets mini-swe-agent global call and cost stop thresholds from the same approved values. Mini-swe-agent checks cost after a provider response, so the final request can cross a threshold; the runner records that actual cost and makes no later call once the aggregate approved threshold is exhausted. The frozen agent configuration sets `environment.pull_timeout: 900` so cold SWE-bench images can finish downloading before Docker startup is judged unavailable. Provider and Docker failures stop the serial run without retrying an uncertain write.
 
-Arm and cost ceilings are cumulative across resume-safe chunks. Before each arm, the runner verifies the append-only journal, subtracts completed arms and reported spend from the single approved totals, passes the remaining cost allowance to mini-swe-agent, and applies the frozen per-arm step limit as the internal model-call ceiling. Missing, malformed, negative, or uncertain cost data blocks resume. Restarting a process never resets the user's approved budget.
+Arm ceilings and cost stop thresholds are cumulative across resume-safe chunks. Before each arm, the runner verifies the append-only journal, subtracts completed arms and actual reported spend from the single approved totals, passes the remaining cost allowance to mini-swe-agent, and applies the frozen per-arm step limit as the internal model-call ceiling. Missing, malformed, negative, or uncertain cost data blocks resume. Restarting a process never resets the user's approved budget.
 
-The first four-arm Docker pilot is historical diagnostic evidence only: the 80-step ceiling ended both Jeviphy arms before official evaluation while Graphify completed both. The replacement protocol gives both arms the same 160-step and `$0.16` per-arm ceilings, pins the complete agent configuration by SHA-256, and uses a fresh run root. No pilot outcome is pooled into the candidate denominator.
+The first four-arm Docker pilot is historical diagnostic evidence only: the 80-step ceiling ended both Jeviphy arms before official evaluation while Graphify completed both. The replacement protocol gives both arms the same 160-step ceiling and `$0.16` per-arm cost stop threshold, pins the complete agent configuration by SHA-256, and uses a fresh run root. No pilot outcome is pooled into the candidate denominator.
 
 The subsequent six-arm v5 run is also historical diagnostic evidence only. It exposed a harness defect that classified a model-generated malformed patch in SWE-bench `error_ids` as infrastructure failure. The fixed runner records `error_ids` as product failures, reserves `infra_failure_ids` or a missing report for infrastructure failures, and starts from a fresh run root and candidate SHA. No v5 record is pooled into the replacement run.
 
 The ten-arm v6 run is historical diagnostic evidence only. It exposed that mini-swe-agent's `TimeoutExpired` status during Docker container startup was classified as a product failure with uncertain cost. The fixed runner classifies that status as `infrastructure_failed`, stops without charging the product denominator, and starts from a fresh run root and candidate SHA. No v6 record is pooled into the replacement run.
+
+The three-arm v7 run is historical diagnostic evidence only. It exposed misleading cost-ceiling language and an arm-at-a-time wrapper that discarded a reusable Docker image between paired arms. The replacement run labels mini-swe-agent cost values as post-response stop thresholds, reserves chunks of 12 arms already permitted by this specification, and uses a fresh run root. No v7 record is pooled into the replacement run.
 
 ### PG5 — Remote compute
 

@@ -192,7 +192,7 @@ def test_batch_writes_to_separate_output_root(tmp_path, monkeypatch):
     assert not (tmp_path / "isolated").exists()
 
 
-def test_required_openrouter_budget_uses_per_agent_limit(tmp_path):
+def test_required_openrouter_threshold_uses_per_agent_setting(tmp_path):
     config = tmp_path / "mini-openrouter.yaml"
     config.write_text(
         "agent:\n  cost_limit: 0.08\n  step_limit: 80\nmodel:\n  model_name: example\n"
@@ -263,8 +263,11 @@ def test_preview_needs_no_provider_key_and_creates_no_output(tmp_path, monkeypat
         (root / "mini-openrouter.yaml").read_bytes()
     )
     assert preview["maximum_internal_model_calls"] == 160
+    assert preview["max_new_arms_per_chunk"] == 2
     assert preview["mini_swe_agent_version"] == "2.4.6"
     assert preview["docker_pull_timeout_seconds"] == 900
+    assert preview["provider_cost_stop_threshold_usd"] == "0.16"
+    assert preview["per_arm_cost_stop_threshold_usd"] == "0.08"
     assert preview["selected_case"] == "case-1"
     assert preview["swebench_version"] == "5.0.2"
     assert not output.exists()
@@ -372,6 +375,15 @@ def test_uncertain_journal_cost_blocks_resume(tmp_path):
 def test_remaining_limits_reject_exhausted_budget():
     with pytest.raises(ValueError, match="exhausted"):
         remaining_limits([_product_record("graphify", "case-1", cost="0.10")], 2, Decimal("0.10"))
+
+
+def test_remaining_limits_subtracts_reported_cost_above_agent_threshold():
+    calls, cost = remaining_limits(
+        [_product_record("graphify", "case-1", cost="0.17")], 2, Decimal("0.40")
+    )
+
+    assert calls == 1
+    assert cost == Decimal("0.23")
 
 
 def test_seal_product_journal_requires_complete_pairs(tmp_path):

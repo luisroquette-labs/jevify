@@ -58,7 +58,7 @@ def _trajectory_path(output: Path, instance_id: str) -> Path:
 
 
 def required_openrouter_budget(config: Path, agent_calls: int) -> Decimal:
-    """Return the worst-case model spend declared by mini-swe-agent's config."""
+    """Return the aggregate stop threshold declared by mini-swe-agent's config."""
     match = re.search(
         r"(?m)^\s{2}cost_limit:\s*([0-9]+(?:\.[0-9]+)?)\s*$",
         config.read_text(encoding="utf-8"),
@@ -590,7 +590,7 @@ def main() -> int:
         parser.error("--max-new-arms must be between 1 and 12")
     try:
         config_path = args.root / "mini-openrouter.yaml"
-        required_cost = required_openrouter_budget(
+        required_threshold = required_openrouter_budget(
             config_path, required_calls
         )
         max_calls_per_arm = configured_step_limit(config_path)
@@ -598,9 +598,9 @@ def main() -> int:
         model_name = configured_model_name(config_path)
     except (OSError, ValueError) as error:
         parser.error(str(error))
-    if Decimal(str(args.max_cost_usd)) < required_cost:
+    if Decimal(str(args.max_cost_usd)) < required_threshold:
         parser.error(
-            f"worst-case OpenRouter spend is ${required_cost}; "
+            f"aggregate OpenRouter stop threshold must be at least ${required_threshold}; "
             f"--max-cost-usd={args.max_cost_usd} is too low"
         )
     output_root = args.output_dir or args.root / "isolated"
@@ -633,7 +633,8 @@ def main() -> int:
         "machine_class": f"{os.cpu_count()} vCPU/{platform.machine()}",
         "max_agent_arms": args.max_agent_calls,
         "max_calls_per_arm": max_calls_per_arm,
-        "maximum_total_cost_usd": format(Decimal(str(args.max_cost_usd)), "f"),
+        "max_new_arms_per_chunk": args.max_new_arms,
+        "provider_cost_stop_threshold_usd": format(Decimal(str(args.max_cost_usd)), "f"),
         "mini_swe_agent_version": MINI_SWE_AGENT_VERSION,
         "model": model_name,
         "python_version": platform.python_version(),
@@ -652,10 +653,11 @@ def main() -> int:
             "jeviphy_dataset_sha256": dataset_hashes.jeviphy_sha256,
             "manifest_sha256": manifest_sha256,
             "maximum_internal_model_calls": required_calls * max_calls_per_arm,
-            "maximum_total_cost_usd": format(required_cost, "f"),
             "model": model_name,
             "output_path": str(output_root),
-            "per_arm_cost_limit_usd": format(required_cost / required_calls, "f"),
+            "per_arm_cost_stop_threshold_usd": format(
+                required_threshold / required_calls, "f"
+            ),
             **execution_pins,
         }
         if args.canary:

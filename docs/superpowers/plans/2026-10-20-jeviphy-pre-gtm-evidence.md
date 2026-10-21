@@ -15,7 +15,7 @@
 - Preserve benchmark v2 manifest SHA `ce54fe1c5c531d10947ea363a05cbb0ed6dcd0336324752b03276306713584ac` and Graphify pin `4342e67107f77db54098d7873b563ff20830dcb8`; changed inputs create benchmark v3.
 - Preserve the published retrieval result and its raw artifact hashes; never rewrite historical results with a new candidate.
 - A trajectory, submitted patch, zero exit code, or retrieval hit is not product-task success; only the official SWE-bench evaluator decides success.
-- Default Jeviphy performs no paid call. Live execution requires current-conversation approval, project-scoped credentials, positive call and cost ceilings, and a fresh private output directory.
+- Default Jeviphy performs no paid call. Live execution requires current-conversation approval, project-scoped credentials, positive call ceilings and cost stop thresholds, and a fresh private output directory.
 - Product generation, Docker evaluation, full suite, and install matrices run on GitHub compute; do not run them directly on the Mac.
 - Typecheck, lint, and focused tests use the project's Python equivalents; when local execution is needed, use `mac-gate`. Do not add a dependency unless the official evaluator requires it in the remote run environment.
 - Tasks 1–6 form one implementation task with one branch and one PR to `jeviphy`. Task 7 starts only after that merge and uses its own beta-evidence branch and one PR. Own both reviews, checks, merges, and post-merge verification without asking Luis to review.
@@ -432,7 +432,7 @@ Commit the validator and documentation. External receipts arrive later through t
 
 - [ ] **Step 1: Freeze and print the execution preview without a provider key**
 
-In the Codespace, validate both arm datasets, then print only: candidate SHA, manifest hash, both dataset hashes, model name, case count `120`, arm count `240`, per-arm cost limit, maximum total cost, Docker version, and output path. Verify the checkout is clean and the output path does not contain an earlier run. Do not pool the earlier Modal or partial Docker outputs.
+In the Codespace, validate both arm datasets, then print only: candidate SHA, manifest hash, both dataset hashes, model name, case count `120`, arm count `240`, chunk size, per-arm cost stop threshold, aggregate cost stop threshold, Docker version, and output path. Verify the checkout is clean and the output path does not contain an earlier run. Do not pool the earlier Modal or partial Docker outputs.
 
 - [ ] **Step 2: Run a two-arm live canary under its own approval**
 
@@ -573,6 +573,6 @@ Proceed only with at least five participants, at least four complete successes, 
 - **Pass 4:** no substantial improvement found — corrected the receipt field name and added the already-required chunk limit to the example command; architecture, gates, and task order remained unchanged.
 - **Pass 5:** substantial improvement applied — split engineering/release-candidate work from the later external beta into two sequential task branches and PRs; aligned the declared dataset-validator interfaces with their test examples.
 - **Pass 6:** no substantial improvement found — all 11 spec requirements map to owning tasks, the 39 steps have concrete commands or code, interfaces are consistent, and placeholder/code-fence scans passed.
-- **Pass 7:** substantial improvement applied — made paid call and cost ceilings cumulative across all resume-safe chunks, preventing each new process from resetting and multiplying the approved budget.
+- **Pass 7:** substantial improvement applied — made paid call limits and cost stop thresholds cumulative across all resume-safe chunks, preventing each new process from resetting and multiplying the approved budget.
 - **Pass 8:** no substantial improvement found — failure, resume, privacy, paired-order, official-evaluation, and claim-boundary reviews found no new design gap; clarified that uncertain cost blocks the very next paid arm.
 - **Pass 9:** no substantial improvement found — verified the frozen manifest hash, current scorecard states, zero-configuration result, file map, interface names, requirement coverage, and executable commands without finding another material change.

@@ -241,9 +241,9 @@ def run_command_arm(
 
 def validate_live_limits(*, allow_network_agent: bool, max_agent_calls: int, max_cost_usd: float) -> None:
     if allow_network_agent and (max_agent_calls < 1 or max_cost_usd <= 0):
-        raise ValueError("network agent requires positive call and cost ceilings")
+        raise ValueError("network agent requires positive call limits and cost stop thresholds")
     if not allow_network_agent and (max_agent_calls or max_cost_usd):
-        raise ValueError("cost ceilings require --allow-network-agent")
+        raise ValueError("cost stop thresholds require --allow-network-agent")
 
 
 def append_pair(path: Path, pins: RunPins, pair: PairRecord) -> None:
