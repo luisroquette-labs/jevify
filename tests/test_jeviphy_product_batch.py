@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.jeviphy_product_eval import sha256_bytes
 from tools.jeviphy_product_batch import (
     ArmResult,
     configured_model_name,
@@ -239,6 +240,9 @@ def test_preview_needs_no_provider_key_and_creates_no_output(tmp_path, monkeypat
     assert product_main() == 0
     preview = json.loads(capsys.readouterr().out)
     assert preview["arm_count"] == 2
+    assert preview["agent_config_sha256"] == sha256_bytes(
+        (root / "mini-openrouter.yaml").read_bytes()
+    )
     assert preview["maximum_internal_model_calls"] == 160
     assert preview["mini_swe_agent_version"] == "2.4.6"
     assert preview["selected_case"] == "case-1"
@@ -267,7 +271,7 @@ def test_execution_command_hash_is_canonical(tmp_path):
         "root": tmp_path / "root", "cases": tmp_path / "cases.json",
         "output_root": tmp_path / "out", "timeout_seconds": 30,
         "max_agent_arms": 2, "max_cost_usd": Decimal("0.16"),
-        "max_new_arms": 2, "canary": True,
+        "max_new_arms": 2, "canary": True, "agent_config_sha256": "f" * 64,
     }
     assert execution_command_sha256(**values) == execution_command_sha256(**dict(reversed(list(values.items()))))
 

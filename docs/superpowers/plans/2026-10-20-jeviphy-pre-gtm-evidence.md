@@ -436,11 +436,11 @@ In the Codespace, validate both arm datasets, then print only: candidate SHA, ma
 
 - [ ] **Step 2: Run a two-arm live canary under its own approval**
 
-Before the full run, request approval for exactly two paid agent arms, up to 160 internal model calls under the frozen 80-step limit, and the configured two-arm maximum of `$0.16`. Run one case chosen by a manifest hash before outputs are viewed. Require both predictions, both official evaluations, a sealed pair, and a scorecard-readable record. Discard the canary from the 120-case denominator and use a new output directory for the candidate run.
+Before the full run, request approval for exactly two paid agent arms, up to 320 internal model calls under the frozen 160-step limit, and the configured two-arm maximum of `$0.32`. Run one case chosen by a manifest hash before outputs are viewed. Require both predictions, both official evaluations, a sealed pair, and a scorecard-readable record. Discard the canary from the 120-case denominator and use a new output directory for the candidate run. The earlier four-arm 80-step pilot is diagnostic evidence only because both Jeviphy arms exhausted that artificial ceiling before evaluation.
 
 - [ ] **Step 3: Stop at the full paid-use boundary**
 
-Obtain current-conversation approval for exactly 240 paid agent arms, up to 19,200 internal model calls under the frozen 80-step limit, and the calculated maximum. At the current `agent.cost_limit: 0.08`, the ceiling is `$19.20`; recalculate from the frozen configuration rather than hard-coding it. Do not infer approval from the canary, an earlier conversation, or a GitHub/AWS compute authorization.
+Obtain current-conversation approval for exactly 240 paid agent arms, up to 38,400 internal model calls under the frozen 160-step limit, and the calculated maximum. At `agent.cost_limit: 0.16`, the ceiling is `$38.40`; recalculate from the frozen configuration rather than hard-coding it. The owner authorized the spend required to complete this benchmark in the current conversation. Do not infer future approval from the canary, an earlier conversation, or a GitHub/AWS compute authorization.
 
 - [ ] **Step 4: Run the serial generation and official evaluation**
 
@@ -453,7 +453,7 @@ uv run --frozen python -m tools.jeviphy_product_batch \
   --output-dir "$PRIVATE_OUTPUT" \
   --allow-network-agent \
   --max-agent-arms 240 \
-  --max-cost-usd 19.20 \
+  --max-cost-usd 38.40 \
   --max-new-arms 12
 ```
 

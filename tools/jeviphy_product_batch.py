@@ -110,9 +110,11 @@ def validate_run_root(output_root: Path, pins: dict) -> None:
 def execution_command_sha256(
     *, root: Path, cases: Path, output_root: Path, timeout_seconds: int,
     max_agent_arms: int, max_cost_usd: Decimal, max_new_arms: int, canary: bool,
+    agent_config_sha256: str,
 ) -> str:
     payload = {
         "canary": canary,
+        "agent_config_sha256": agent_config_sha256,
         "cases": str(cases.resolve()),
         "max_agent_arms": max_agent_arms,
         "max_cost_usd": format(max_cost_usd, "f"),
@@ -605,6 +607,7 @@ def main() -> int:
     ).strip()
     docker_version = subprocess.check_output(["docker", "--version"], text=True).strip()
     execution_pins = {
+        "agent_config_sha256": sha256_bytes(config_path.read_bytes()),
         "command_sha256": execution_command_sha256(
             root=args.root,
             cases=args.cases,
@@ -614,6 +617,7 @@ def main() -> int:
             max_cost_usd=Decimal(str(args.max_cost_usd)),
             max_new_arms=args.max_new_arms,
             canary=args.canary,
+            agent_config_sha256=sha256_bytes(config_path.read_bytes()),
         ),
         "docker_version": docker_version,
         "machine_class": f"{os.cpu_count()} vCPU/{platform.machine()}",
