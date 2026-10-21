@@ -374,7 +374,9 @@ def test_seal_product_journal_requires_complete_pairs(tmp_path):
     assert output.stat().st_mode & 0o777 == 0o600
 
 
-def test_completed_generation_uses_official_swebench_report(tmp_path, monkeypatch):
+def test_completed_generation_uses_official_swebench_report_even_on_nonzero_exit(
+    tmp_path, monkeypatch
+):
     output = tmp_path / "out" / "graphify" / "case-1"
     trajectory = output / "case-1" / "case-1.traj.json"
     trajectory.parent.mkdir(parents=True)
@@ -397,7 +399,7 @@ def test_completed_generation_uses_official_swebench_report(tmp_path, monkeypatc
             "completed_ids": ["case-1"], "resolved_ids": ["case-1"],
             "unresolved_ids": [], "error_ids": [], "infra_failure_ids": [],
         }), encoding="utf-8")
-        return type("Completed", (), {"returncode": 0})()
+        return type("Completed", (), {"returncode": 1})()
 
     monkeypatch.setattr("tools.jeviphy_product_batch.subprocess.run", run)
     record = evaluate_generated_arm(

@@ -405,7 +405,7 @@ def evaluate_generated_arm(
         current_reports = list(evaluation_root.glob(f"*.{run_id}.json"))
         if len(current_reports) == 1:
             report = current_reports[0]
-    if completed.returncode != 0 or not report.is_file():
+    if not report.is_file():
         failed = _failed_product_record(
             ArmResult(result.arm, result.instance_id, "infrastructure_failed", completed.returncode,
                       True, result.elapsed_seconds, "official evaluator failed"),

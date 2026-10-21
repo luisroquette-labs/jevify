@@ -142,20 +142,23 @@ def evaluate_prediction(
     if not isinstance(resolved_ids, list) or not isinstance(completed_ids, list):
         raise ValueError("evaluator report is missing official result lists")
     resolved = instance_id in resolved_ids
-    infrastructure = instance_id in report.get("infra_failure_ids", []) or instance_id in report.get("error_ids", [])
-    status = "infrastructure_failed" if infrastructure else "completed"
-    if not infrastructure and instance_id not in completed_ids:
+    infrastructure = instance_id in report.get("infra_failure_ids", [])
+    evaluator_error = instance_id in report.get("error_ids", [])
+    status = "infrastructure_failed" if infrastructure else "failed" if evaluator_error else "completed"
+    if not infrastructure and not evaluator_error and instance_id not in completed_ids:
         raise ValueError(f"evaluator report does not contain completed instance {instance_id}")
     input_tokens, output_tokens, cost = _model_stats(trajectory_path)
     patch = prediction["model_patch"].encode("utf-8")
     diagnostic = None
     if infrastructure:
         diagnostic = f"official evaluator failure: {report_path.relative_to(run_root)}"
+    elif evaluator_error:
+        diagnostic = f"official evaluator rejected prediction: {report_path.relative_to(run_root)}"
     return ProductArmRecord(
         arm=arm,
         instance_id=instance_id,
         status=status,
-        success=bool(resolved and not infrastructure),
+        success=bool(resolved and not infrastructure and not evaluator_error),
         generation_seconds=generation_seconds,
         evaluation_seconds=evaluation_seconds,
         prediction_sha256=file_sha256(prediction_path),

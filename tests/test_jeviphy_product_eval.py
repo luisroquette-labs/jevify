@@ -91,6 +91,30 @@ def test_evaluator_failure_is_infrastructure_failure(tmp_path):
     assert record.success is False
 
 
+def test_invalid_patch_is_product_failure(tmp_path):
+    prediction = tmp_path / "preds.json"
+    prediction.write_text(json.dumps({"case-1": {
+        "instance_id": "case-1", "model_name_or_path": "model", "model_patch": "garbage"
+    }}), encoding="utf-8")
+    report = tmp_path / "results.json"
+    report.write_text(json.dumps({
+        "completed_ids": [], "resolved_ids": [], "unresolved_ids": [],
+        "error_ids": ["case-1"], "infra_failure_ids": [],
+    }), encoding="utf-8")
+    trajectory = tmp_path / "case-1.traj.json"
+    trajectory.write_text(json.dumps({"info": {"model_stats": {
+        "api_calls": 1, "instance_cost": 0.02
+    }}}), encoding="utf-8")
+
+    record = evaluate_prediction(
+        "jeviphy", "case-1", prediction, report, trajectory,
+        generation_seconds=1.0, evaluation_seconds=2.0, run_root=tmp_path,
+    )
+
+    assert (record.status, record.success, record.resolved) == ("failed", False, False)
+    assert record.diagnostic.startswith("official evaluator rejected prediction:")
+
+
 def pair(case_id="case-1"):
     return PairRecord(
         case_id, "valid_source", 0, ("graphify", "jeviphy"), "c" * 64, arm(), arm("jeviphy")

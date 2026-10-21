@@ -96,6 +96,8 @@ Arm and cost ceilings are cumulative across resume-safe chunks. Before each arm,
 
 The first four-arm Docker pilot is historical diagnostic evidence only: the 80-step ceiling ended both Jeviphy arms before official evaluation while Graphify completed both. The replacement protocol gives both arms the same 160-step and `$0.16` per-arm ceilings, pins the complete agent configuration by SHA-256, and uses a fresh run root. No pilot outcome is pooled into the candidate denominator.
 
+The subsequent six-arm v5 run is also historical diagnostic evidence only. It exposed a harness defect that classified a model-generated malformed patch in SWE-bench `error_ids` as infrastructure failure. The fixed runner records `error_ids` as product failures, reserves `infra_failure_ids` or a missing report for infrastructure failures, and starts from a fresh run root and candidate SHA. No v5 record is pooled into the replacement run.
+
 ### PG5 — Remote compute
 
 Product generation and SWE-bench evaluation run in a managed GitHub Codespace through `codespace-manager`. The run proves the remote checkout SHA and clean state before execution. The Codespace is stopped after each command. No product benchmark or full suite runs directly on the Mac.
@@ -181,10 +183,18 @@ Beta records contain participant handle, consent timestamp, version, OS, host, e
 ### Scenario: Provider succeeds but evaluation infrastructure fails
 
 **Given** a non-empty patch was produced
-**And** Docker image creation or the evaluator fails
+**And** Docker image creation fails or the evaluator cannot produce a report
 **When** the batch inspects the result
 **Then** the arm is `infrastructure_failed`
 **And** the serial batch stops before another paid arm.
+
+### Scenario: Generated patch cannot be applied
+
+**Given** the provider returns a non-empty malformed patch
+**And** the official report lists the instance in `error_ids` but not `infra_failure_ids`
+**When** the batch inspects the result
+**Then** the arm is a product `failed` result
+**And** the batch keeps it in the denominator without retrying the paid generation.
 
 ### Scenario: Resume inputs changed
 
