@@ -47,7 +47,7 @@ Skriv `/graphify` i din AI-kodassistent så kartlägger den hela ditt projekt (k
   <em>FastAPI-kodbasen kartlagd av graphify. Varje nod är ett begrepp, färger är detekterade gemenskaper och hela saken är klickbar i graph.html.</em>
 </p>
 
-**Kom igång** (30 sekunder). Kräver Python 3.10+ och uv (eller pipx):
+**Kom igång** (30 sekunder). Kräver Python 3.11+ och uv (eller pipx):
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)

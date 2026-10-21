@@ -47,7 +47,7 @@ Tapez `/graphify` dans votre assistant de codage IA, et il cartographie l'ensemb
   <em>La base de code FastAPI cartographiée par graphify. Chaque nœud est un concept, les couleurs sont des communautés détectées, et l'ensemble est cliquable dans graph.html.</em>
 </p>
 
-**Pour démarrer** (30 secondes). Nécessite Python 3.10+ et uv (ou pipx) :
+**Pour démarrer** (30 secondes). Nécessite Python 3.11+ et uv (ou pipx) :
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)

@@ -47,7 +47,7 @@ Yapay zeka destekli kodlama asistanınıza `/graphify` yazın; tüm projenizi (k
   <em>graphify tarafından eşlenen FastAPI kod tabanı. Her düğüm bir kavram, renkler tespit edilen topluluklar ve bütün yapı graph.html içinde tıklanabilir.</em>
 </p>
 
-**Başlayın** (30 saniye). Python 3.10+ ve uv (ya da pipx) gerektirir:
+**Başlayın** (30 saniye). Python 3.11+ ve uv (ya da pipx) gerektirir:
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)

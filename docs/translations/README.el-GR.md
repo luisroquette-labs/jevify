@@ -47,7 +47,7 @@
   <em>Η βάση κώδικα του FastAPI χαρτογραφημένη από το graphify. Κάθε κόμβος είναι μια έννοια, τα χρώματα είναι εντοπισμένες κοινότητες, και το σύνολο είναι clickable στο graph.html.</em>
 </p>
 
-**Ξεκινήστε** (30 δευτερόλεπτα). Χρειάζεται Python 3.10+ και uv (ή pipx):
+**Ξεκινήστε** (30 δευτερόλεπτα). Χρειάζεται Python 3.11+ και uv (ή pipx):
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)

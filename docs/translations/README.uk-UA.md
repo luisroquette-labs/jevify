@@ -47,7 +47,7 @@
   <em>Кодова база FastAPI, відображена graphify. Кожен вузол - це поняття, кольори - це виявлені спільноти, і все це клікабельне у graph.html.</em>
 </p>
 
-**Початок роботи** (30 секунд). Потрібні Python 3.10+ та uv (або pipx):
+**Початок роботи** (30 секунд). Потрібні Python 3.11+ та uv (або pipx):
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)
