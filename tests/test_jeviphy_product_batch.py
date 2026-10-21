@@ -105,12 +105,25 @@ def test_trajectory_marks_completed_run(tmp_path):
     trajectory = output / "case-1" / "case-1.traj.json"
     trajectory.parent.mkdir(parents=True)
     trajectory.write_text("{}", encoding="utf-8")
+    (output / "preds.json").write_text("{}", encoding="utf-8")
 
     result = inspect_swebench_output(output, "case-1", returncode=0)
 
     assert result.state == "completed"
     assert result.trajectory is True
     assert result.diagnostic is None
+
+
+def test_trajectory_without_prediction_is_failure(tmp_path):
+    output = tmp_path / "case-1"
+    trajectory = output / "case-1" / "case-1.traj.json"
+    trajectory.parent.mkdir(parents=True)
+    trajectory.write_text("{}", encoding="utf-8")
+
+    result = inspect_swebench_output(output, "case-1", returncode=0)
+
+    assert result.state == "failed"
+    assert result.diagnostic == "missing prediction"
 
 
 def test_latest_status_wins_over_stale_failed_attempt(tmp_path):
@@ -120,6 +133,7 @@ def test_latest_status_wins_over_stale_failed_attempt(tmp_path):
     trajectory = output / "case-1" / "case-1.traj.json"
     trajectory.parent.mkdir()
     trajectory.write_text("{}", encoding="utf-8")
+    (output / "preds.json").write_text("{}", encoding="utf-8")
     new_status = output / "exit_statuses_2.yaml"
     new_status.write_text(
         "instances_by_exit_status:\n    Submitted:\n    - case-1\n",
@@ -139,6 +153,7 @@ def test_agent_limit_with_trajectory_is_a_failed_attempt(tmp_path):
     trajectory = output / "case-1" / "case-1.traj.json"
     trajectory.parent.mkdir()
     trajectory.write_text("{}", encoding="utf-8")
+    (output / "preds.json").write_text("{}", encoding="utf-8")
 
     result = inspect_swebench_output(output, "case-1", returncode=0)
 
@@ -350,10 +365,52 @@ def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.jeviphy_product_batch.subprocess.Popen", popen)
     run_one(tmp_path, tmp_path / "output", "graphify", "case-1", "secret", 1)
 
-    assert captured["command"][-2:] == ["--environment-class", "docker"]
+    environment_index = captured["command"].index("--environment-class")
+    assert captured["command"][environment_index + 1] == "docker"
     assert captured["command"][2] == "mini-swe-agent[full]==2.4.6"
     assert "swebench_modal.yaml" not in captured["command"]
     assert captured["env"]["MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT"] == "1"
+
+
+def test_product_arm_uses_single_runner_and_writes_prediction(tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "mini-openrouter.yaml").write_text(
+        'model:\n  model_name: "minimax/minimax-m2.5"\n', encoding="utf-8"
+    )
+
+    class Process:
+        pid = 123
+
+        def wait(self, timeout=None):
+            trajectory = (
+                tmp_path / "output" / "graphify" / "case-1" / "case-1" /
+                "case-1.traj.json"
+            )
+            trajectory.parent.mkdir(parents=True, exist_ok=True)
+            trajectory.write_text(
+                json.dumps({"info": {"submission": "diff --git a/a b/a"}}),
+                encoding="utf-8",
+            )
+            return 0
+
+    captured = {}
+
+    def popen(command, **kwargs):
+        captured["command"] = command
+        return Process()
+
+    monkeypatch.setattr("tools.jeviphy_product_batch.subprocess.Popen", popen)
+
+    result = run_one(root, tmp_path / "output", "graphify", "case-1", "secret", 1)
+
+    prediction = json.loads(
+        (tmp_path / "output" / "graphify" / "case-1" / "preds.json").read_text()
+    )
+    assert result.state == "completed"
+    assert "swebench-single" in captured["command"]
+    assert "--workers" not in captured["command"]
+    assert prediction["case-1"]["model_patch"] == "diff --git a/a b/a"
 
 
 def _product_record(arm, instance_id, *, status="completed", cost="0.02"):

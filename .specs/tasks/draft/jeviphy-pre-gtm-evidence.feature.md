@@ -104,6 +104,8 @@ The three-arm v7 run is historical diagnostic evidence only. It exposed misleadi
 
 The one-arm v8 run is historical diagnostic evidence only. Its Graphify arm started Docker immediately but produced no trajectory or cost before the 35-minute outer timeout. The replacement protocol disables mini-swe-agent's ten-attempt model retry loop, treats the outer timeout as infrastructure failure, checkpoints one pair at a time, and uses a fresh run root. No v8 record is pooled into the replacement run.
 
+The one-arm v9 canary is historical diagnostic evidence only. It reproduced the v8 stall in mini-swe-agent batch mode while a direct provider request returned HTTP 200 in under one second and the supported single-instance runner reached the model and wrote a trajectory. The replacement uses `swebench-single` for each already-serial arm and derives the official prediction file from its trajectory. No v9 record is pooled into the replacement run.
+
 ### PG5 — Remote compute
 
 Product generation and SWE-bench evaluation run in a managed GitHub Codespace through `codespace-manager`. The run proves the remote checkout SHA and clean state before execution. The Codespace is stopped after each command. No product benchmark or full suite runs directly on the Mac.
@@ -112,7 +114,7 @@ The pre-GTM candidate run contains a deterministic, stratum-balanced 30-case sub
 
 The run is split into resume-safe chunks of exactly one paired case, at most two new arms. Each chunk revalidates every pin, appends complete arm records, stops the Codespace afterward, and never seals the final report until all 60 expected arms exist. At a 35-minute arm timeout, one chunk has a 70-minute worst-case bound.
 
-The model backend disables automatic retries with `MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=1`. A provider or outer wall timeout is infrastructure failure and stops before another paid arm. This prevents a stalled request from consuming the whole batch window or being retried with uncertain billing.
+The model backend disables automatic retries with `MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=1`. Each arm uses mini-swe-agent's single-instance runner, avoiding the batch executor that stalled even with one worker. A provider or outer wall timeout is infrastructure failure and stops before another paid arm. This prevents a stalled request from consuming the whole batch window or being retried with uncertain billing.
 
 ### PG6 — Unified evidence bundle
 

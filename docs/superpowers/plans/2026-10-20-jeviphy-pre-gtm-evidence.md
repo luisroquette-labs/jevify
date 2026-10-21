@@ -458,7 +458,7 @@ uv run --frozen python -m tools.jeviphy_product_batch \
   --case-limit 30
 ```
 
-Run in paired chunks with `--max-new-arms 2`. The runner alternates arms, evaluates each prediction officially, journals each arm, and stops on provider or evaluation infrastructure failure. Set `MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=1`; uncertain provider timeouts are never retried. Resume is allowed only with identical pins. `codespace-manager` must stop the Codespace after each chunk; never leave a benchmark command detached.
+Run in paired chunks with `--max-new-arms 2`. Each already-serial arm uses `swebench-single`, derives `preds.json` from the saved trajectory, evaluates the prediction officially, journals the arm, and stops on provider or evaluation infrastructure failure. Set `MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=1`; uncertain provider timeouts are never retried. Resume is allowed only with identical pins. `codespace-manager` must stop the Codespace after each chunk; never leave a benchmark command detached.
 
 - [ ] **Step 5: Seal and score without tuning**
 
@@ -578,3 +578,4 @@ Proceed only with at least five participants, at least four complete successes, 
 - **Pass 8:** substantial improvement applied after the v8 Graphify arm stalled for the full 35-minute wall timeout — reduced the pre-GTM candidate to a deterministic balanced 30-case subset, checkpointed every pair, disabled uncertain model retries, and retained all 120 cases for leakage validation.
 - **Pass 9:** no substantial improvement found — failure, resume, privacy, paired-order, official-evaluation, and claim-boundary reviews found no new design gap; clarified that uncertain cost blocks the very next paid arm.
 - **Pass 10:** no substantial improvement found — verified the frozen manifest hash, current scorecard states, zero-configuration result, file map, interface names, requirement coverage, and executable commands without finding another material change.
+- **Pass 11:** substantial improvement applied after the v9 canary reproduced the batch-mode stall — isolated the provider as healthy, proved the supported single-instance runner reaches the model, and replaced only the deadlocking batch wrapper while preserving the model, environment, prompt, limits, official evaluator, and paired protocol.

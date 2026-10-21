@@ -24,16 +24,20 @@ from tools.jeviphy_product_dataset import validate_arm_datasets
 
 
 INFRASTRUCTURE_MARKERS = (
+    "Authentication failed.",
     "billing cycle spend limit",
     "ImageBuildError",
     "No space left on device",
     "Sandbox creation failed",
     "insufficient credits",
+    "Rate limit exceeded",
 )
 INFRASTRUCTURE_STATUSES = {
     "APIConnectionError",
     "AuthenticationError",
     "ImageBuildError",
+    "OpenRouterAuthenticationError",
+    "OpenRouterRateLimitError",
     "RateLimitError",
     "SandboxError",
     "TimeoutExpired",
@@ -200,6 +204,8 @@ def inspect_swebench_output(output: Path, instance_id: str, returncode: int) -> 
         state, diagnostic = "failed", f"agent command exited {returncode}"
     elif not trajectory:
         state, diagnostic = "failed", "missing trajectory"
+    elif not (output / "preds.json").is_file():
+        state, diagnostic = "failed", "missing prediction"
     elif statuses and statuses != ["Submitted"]:
         state, diagnostic = "failed", details
     else:
@@ -227,23 +233,23 @@ def run_one(
         "--from",
         f"mini-swe-agent[full]=={MINI_SWE_AGENT_VERSION}",
         "mini-extra",
-        "swebench",
+        "swebench-single",
         "--subset",
         str(root / f"{arm}-train"),
         "--split",
         "train",
-        "--filter",
-        f"^{re.escape(instance_id)}$",
+        "--instance",
+        instance_id,
         "--output",
-        str(output),
-        "--workers",
-        "1",
+        str(trajectory),
         "-c",
         "swebench.yaml",
         "-c",
         str(root / "mini-openrouter.yaml"),
         "--environment-class",
         "docker",
+        "--exit-immediately",
+        "--yolo",
     ]
     env = os.environ.copy()
     env["OPENROUTER_API_KEY"] = api_key
@@ -268,6 +274,24 @@ def run_one(
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
             exit_code = 124
+
+    if exit_code == 0 and trajectory.is_file():
+        try:
+            payload = json.loads(trajectory.read_text(encoding="utf-8"))
+            submission = payload.get("info", {}).get("submission")
+        except (AttributeError, json.JSONDecodeError, OSError):
+            submission = None
+        if isinstance(submission, str):
+            prediction = {
+                instance_id: {
+                    "instance_id": instance_id,
+                    "model_name_or_path": configured_model_name(root / "mini-openrouter.yaml"),
+                    "model_patch": submission,
+                }
+            }
+            (output / "preds.json").write_text(
+                json.dumps(prediction, indent=2) + "\n", encoding="utf-8"
+            )
 
     inspected = inspect_swebench_output(output, instance_id, exit_code)
     return ArmResult(
