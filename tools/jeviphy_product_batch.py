@@ -98,6 +98,33 @@ def configured_model_name(config: Path) -> str:
     return match.group(1)
 
 
+def select_benchmark_cases(
+    instance_ids: list[str], cases: dict[str, dict], manifest_sha256: str, limit: int | None
+) -> list[str]:
+    """Select a deterministic, stratum-balanced prefix for the pre-GTM run."""
+    if limit is None or limit == len(instance_ids):
+        return list(instance_ids)
+    if not 1 <= limit <= len(instance_ids):
+        raise ValueError(f"case limit must be between 1 and {len(instance_ids)}")
+    buckets: dict[str, list[str]] = {}
+    for instance_id in instance_ids:
+        buckets.setdefault(cases[instance_id]["stratum"], []).append(instance_id)
+    for bucket in buckets.values():
+        bucket.sort(
+            key=lambda instance_id: sha256_bytes(
+                f"{manifest_sha256}:{instance_id}".encode()
+            )
+        )
+    selected: list[str] = []
+    while len(selected) < limit:
+        for stratum in sorted(buckets):
+            if buckets[stratum]:
+                selected.append(buckets[stratum].pop(0))
+                if len(selected) == limit:
+                    break
+    return selected
+
+
 def select_canary_case(instance_ids: list[str], manifest_sha256: str) -> str:
     if not instance_ids or len(instance_ids) != len(set(instance_ids)):
         raise ValueError("canary selection requires unique cases")
@@ -118,10 +145,11 @@ def validate_run_root(output_root: Path, pins: dict) -> None:
 def execution_command_sha256(
     *, root: Path, cases: Path, output_root: Path, timeout_seconds: int,
     max_agent_arms: int, max_cost_usd: Decimal, max_new_arms: int, canary: bool,
-    agent_config_sha256: str,
+    agent_config_sha256: str, case_limit: int | None,
 ) -> str:
     payload = {
         "canary": canary,
+        "case_limit": case_limit,
         "agent_config_sha256": agent_config_sha256,
         "cases": str(cases.resolve()),
         "max_agent_arms": max_agent_arms,
@@ -160,7 +188,7 @@ def inspect_swebench_output(output: Path, instance_id: str, returncode: int) -> 
     )
 
     if returncode == 124:
-        state, diagnostic = "timeout", "agent exceeded the wall-clock limit"
+        state, diagnostic = "infrastructure_failed", "agent exceeded the wall-clock limit"
     elif marker or infrastructure_status:
         state = "infrastructure_failed"
         diagnostic = details or marker or infrastructure_status
@@ -219,6 +247,7 @@ def run_one(
     ]
     env = os.environ.copy()
     env["OPENROUTER_API_KEY"] = api_key
+    env["MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT"] = "1"
     started = time.monotonic()
     log_path = output / "runner.log"
     with log_path.open("w", encoding="utf-8") as log:
@@ -500,7 +529,9 @@ def seal_product_journal(
     by_key = {(record.arm, record.instance_id): record for record in records}
     expected = {(arm, case_id) for case_id in expected_ids for arm in ("graphify", "jeviphy")}
     if set(by_key) != expected:
-        raise ValueError("product journal does not contain the exact expected 240 arms")
+        raise ValueError(
+            f"product journal does not contain the exact expected {len(expected)} arms"
+        )
     pairs = []
     for case_id in expected_ids:
         baseline = by_key[("graphify", case_id)]
@@ -550,6 +581,7 @@ def main() -> int:
     )
     parser.add_argument("--max-cost-usd", type=float, default=0)
     parser.add_argument("--max-new-arms", type=int, default=12)
+    parser.add_argument("--case-limit", type=int)
     parser.add_argument("--canary", action="store_true")
     parser.add_argument("--preview", action="store_true")
     args = parser.parse_args()
@@ -580,7 +612,13 @@ def main() -> int:
         )
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         parser.error(str(error))
-    run_ids = [select_canary_case(instance_ids, manifest_sha256)] if args.canary else instance_ids
+    try:
+        selected_ids = select_benchmark_cases(
+            instance_ids, cases, manifest_sha256, args.case_limit
+        )
+    except ValueError as error:
+        parser.error(str(error))
+    run_ids = [select_canary_case(selected_ids, manifest_sha256)] if args.canary else selected_ids
     required_calls = len(run_ids) * 2
     if required_calls > args.max_agent_calls:
         parser.error(f"{required_calls} arms exceed --max-agent-arms={args.max_agent_calls}")
@@ -627,19 +665,25 @@ def main() -> int:
             max_new_arms=args.max_new_arms,
             canary=args.canary,
             agent_config_sha256=sha256_bytes(config_path.read_bytes()),
+            case_limit=args.case_limit,
         ),
         "docker_version": docker_version,
         "docker_pull_timeout_seconds": docker_pull_timeout,
         "machine_class": f"{os.cpu_count()} vCPU/{platform.machine()}",
         "max_agent_arms": args.max_agent_calls,
+        "case_limit": args.case_limit,
         "max_calls_per_arm": max_calls_per_arm,
         "max_new_arms_per_chunk": args.max_new_arms,
+        "model_retry_attempts": 1,
         "provider_cost_stop_threshold_usd": format(Decimal(str(args.max_cost_usd)), "f"),
         "mini_swe_agent_version": MINI_SWE_AGENT_VERSION,
         "model": model_name,
         "python_version": platform.python_version(),
         "swebench_version": SWEBENCH_VERSION,
         "timeout_seconds": args.timeout_seconds,
+        "selected_cases_sha256": sha256_bytes(
+            json.dumps(run_ids, separators=(",", ":")).encode()
+        ),
     }
     if args.preview:
         if output_root.exists():

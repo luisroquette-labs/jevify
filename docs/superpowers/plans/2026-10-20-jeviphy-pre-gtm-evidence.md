@@ -190,7 +190,7 @@ Map `generation_seconds + evaluation_seconds` to `duration_ms`. Copy token count
 
 Treat the validated CLI ceilings as totals for the complete candidate run. Before every paid arm, count completed paid arms and sum their decimal `cost_usd` values from the validated journal. Compute `remaining_arms = max_agent_arms - completed_arms` and `remaining_cost = max_cost_usd - spent_cost`; reject missing, malformed, negative, duplicated, or uncertain cost records before starting another arm. Set `MSWEA_GLOBAL_CALL_LIMIT` to the frozen per-arm `agent.step_limit` and `MSWEA_GLOBAL_COST_LIMIT` to the remaining total cost. Refuse an existing `preds.json`, evaluator directory, or sealed report in a fresh run root. Preserve resume only through the append-only arm journal with identical pins.
 
-Add `--max-new-arms` with a positive upper bound of 12. Count only arms absent from the validated journal. Stop successfully after the bound, flush and fsync the journal, and leave final sealing unavailable until the expected 240-arm set is complete.
+Add `--max-new-arms` with a positive upper bound of 12. The pre-GTM runner uses two arms so every paired case becomes a remote checkpoint. Count only arms absent from the validated journal, flush and fsync the journal, and leave final sealing unavailable until the expected 60-arm set is complete.
 
 Add a regression test that runs two simulated chunks and proves both receive the frozen per-arm call ceiling while the second receives the original total cost ceiling minus the first arm's decimal cost. A journal arm without provider cost must block the next paid chunk rather than assuming zero.
 
@@ -432,15 +432,15 @@ Commit the validator and documentation. External receipts arrive later through t
 
 - [ ] **Step 1: Freeze and print the execution preview without a provider key**
 
-In the Codespace, validate both arm datasets, then print only: candidate SHA, manifest hash, both dataset hashes, model name, case count `120`, arm count `240`, chunk size, per-arm cost stop threshold, aggregate cost stop threshold, Docker version, and output path. Verify the checkout is clean and the output path does not contain an earlier run. Do not pool the earlier Modal or partial Docker outputs.
+In the Codespace, validate both complete arm datasets, then print only: candidate SHA, manifest hash, selected-case hash, both dataset hashes, model name, case count `30`, arm count `60`, chunk size, per-arm cost stop threshold, aggregate cost stop threshold, Docker version, and output path. Verify the checkout is clean and the output path does not contain an earlier run. Do not pool the earlier Modal or partial Docker outputs.
 
 - [ ] **Step 2: Run a two-arm live canary under its own approval**
 
-Before the full run, request approval for exactly two paid agent arms, up to 320 internal model calls under the frozen 160-step limit, and the configured two-arm maximum of `$0.32`. Run one case chosen by a manifest hash before outputs are viewed. Require both predictions, both official evaluations, a sealed pair, and a scorecard-readable record. Discard the canary from the 120-case denominator and use a new output directory for the candidate run. The earlier four-arm 80-step pilot is diagnostic evidence only because both Jeviphy arms exhausted that artificial ceiling before evaluation.
+Before the full run, request approval for exactly two paid agent arms, up to 320 internal model calls under the frozen 160-step limit, and the configured two-arm maximum of `$0.32`. Run one case chosen by a manifest hash before outputs are viewed. Require both predictions, both official evaluations, a sealed pair, and a scorecard-readable record. Discard the canary from the 30-case denominator and use a new output directory for the candidate run. The earlier four-arm 80-step pilot is diagnostic evidence only because both Jeviphy arms exhausted that artificial ceiling before evaluation.
 
 - [ ] **Step 3: Stop at the full paid-use boundary**
 
-Obtain current-conversation approval for exactly 240 paid agent arms, up to 38,400 internal model calls under the frozen 160-step limit, and the calculated maximum. At `agent.cost_limit: 0.16`, the ceiling is `$38.40`; recalculate from the frozen configuration rather than hard-coding it. The owner authorized the spend required to complete this benchmark in the current conversation. Do not infer future approval from the canary, an earlier conversation, or a GitHub/AWS compute authorization.
+Obtain current-conversation approval for exactly 60 paid agent arms, up to 9,600 internal model calls under the frozen 160-step limit, and the calculated maximum. At `agent.cost_limit: 0.16`, the ceiling is `$9.60`; recalculate from the frozen configuration rather than hard-coding it. The owner authorized the spend required to complete this benchmark in the current conversation. Do not infer future approval from the canary, an earlier conversation, or a GitHub/AWS compute authorization.
 
 - [ ] **Step 4: Run the serial generation and official evaluation**
 
@@ -452,12 +452,13 @@ uv run --frozen python -m tools.jeviphy_product_batch \
   --cases "$PRIVATE_ROOT/all-cases.json" \
   --output-dir "$PRIVATE_OUTPUT" \
   --allow-network-agent \
-  --max-agent-arms 240 \
-  --max-cost-usd 38.40 \
-  --max-new-arms 12
+  --max-agent-arms 60 \
+  --max-cost-usd 9.60 \
+  --max-new-arms 2 \
+  --case-limit 30
 ```
 
-Run in chunks with `--max-new-arms 12`. The runner alternates arms, evaluates each prediction officially, journals each arm, and stops on provider or evaluation infrastructure failure. Resume is allowed only with identical pins. `codespace-manager` must stop the Codespace after each chunk; never leave a benchmark command detached.
+Run in paired chunks with `--max-new-arms 2`. The runner alternates arms, evaluates each prediction officially, journals each arm, and stops on provider or evaluation infrastructure failure. Set `MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=1`; uncertain provider timeouts are never retried. Resume is allowed only with identical pins. `codespace-manager` must stop the Codespace after each chunk; never leave a benchmark command detached.
 
 - [ ] **Step 5: Seal and score without tuning**
 
@@ -574,5 +575,6 @@ Proceed only with at least five participants, at least four complete successes, 
 - **Pass 5:** substantial improvement applied — split engineering/release-candidate work from the later external beta into two sequential task branches and PRs; aligned the declared dataset-validator interfaces with their test examples.
 - **Pass 6:** no substantial improvement found — all 11 spec requirements map to owning tasks, the 39 steps have concrete commands or code, interfaces are consistent, and placeholder/code-fence scans passed.
 - **Pass 7:** substantial improvement applied — made paid call limits and cost stop thresholds cumulative across all resume-safe chunks, preventing each new process from resetting and multiplying the approved budget.
-- **Pass 8:** no substantial improvement found — failure, resume, privacy, paired-order, official-evaluation, and claim-boundary reviews found no new design gap; clarified that uncertain cost blocks the very next paid arm.
-- **Pass 9:** no substantial improvement found — verified the frozen manifest hash, current scorecard states, zero-configuration result, file map, interface names, requirement coverage, and executable commands without finding another material change.
+- **Pass 8:** substantial improvement applied after the v8 Graphify arm stalled for the full 35-minute wall timeout — reduced the pre-GTM candidate to a deterministic balanced 30-case subset, checkpointed every pair, disabled uncertain model retries, and retained all 120 cases for leakage validation.
+- **Pass 9:** no substantial improvement found — failure, resume, privacy, paired-order, official-evaluation, and claim-boundary reviews found no new design gap; clarified that uncertain cost blocks the very next paid arm.
+- **Pass 10:** no substantial improvement found — verified the frozen manifest hash, current scorecard states, zero-configuration result, file map, interface names, requirement coverage, and executable commands without finding another material change.

@@ -21,6 +21,7 @@ from tools.jeviphy_product_batch import (
     required_openrouter_budget,
     run_batch,
     run_one,
+    select_benchmark_cases,
     select_canary_case,
     seal_product_journal,
     validate_run_root,
@@ -76,6 +77,16 @@ def test_container_start_timeout_is_infrastructure_failure(tmp_path):
     assert result.state == "infrastructure_failed"
     assert result.trajectory is False
     assert result.diagnostic == "TimeoutExpired"
+
+
+def test_outer_wall_timeout_is_infrastructure_failure(tmp_path):
+    output = tmp_path / "case-1"
+    output.mkdir()
+
+    result = inspect_swebench_output(output, "case-1", returncode=124)
+
+    assert result.state == "infrastructure_failed"
+    assert result.diagnostic == "agent exceeded the wall-clock limit"
 
 
 def test_zero_exit_without_trajectory_is_failure(tmp_path):
@@ -218,6 +229,27 @@ def test_canary_selection_rejects_duplicate_cases():
         select_canary_case(["case-1", "case-1"], "f" * 64)
 
 
+def test_benchmark_selection_is_deterministic_and_balanced():
+    ids = [f"case-{index}" for index in range(9)]
+    cases = {
+        instance_id: {"stratum": f"stratum-{index % 3}"}
+        for index, instance_id in enumerate(ids)
+    }
+
+    selected = select_benchmark_cases(ids, cases, "a" * 64, 6)
+
+    assert selected == select_benchmark_cases(list(reversed(ids)), cases, "a" * 64, 6)
+    assert {cases[item]["stratum"] for item in selected[:3]} == {
+        "stratum-0", "stratum-1", "stratum-2"
+    }
+    assert len(selected) == len(set(selected)) == 6
+
+
+def test_benchmark_selection_rejects_out_of_range_limit():
+    with pytest.raises(ValueError, match="between 1 and 1"):
+        select_benchmark_cases(["case-1"], {"case-1": {"stratum": "a"}}, "a" * 64, 2)
+
+
 def test_preview_needs_no_provider_key_and_creates_no_output(tmp_path, monkeypatch, capsys):
     from tools.jeviphy_product_dataset import DatasetHashes
 
@@ -264,6 +296,7 @@ def test_preview_needs_no_provider_key_and_creates_no_output(tmp_path, monkeypat
     )
     assert preview["maximum_internal_model_calls"] == 160
     assert preview["max_new_arms_per_chunk"] == 2
+    assert preview["model_retry_attempts"] == 1
     assert preview["mini_swe_agent_version"] == "2.4.6"
     assert preview["docker_pull_timeout_seconds"] == 900
     assert preview["provider_cost_stop_threshold_usd"] == "0.16"
@@ -295,6 +328,7 @@ def test_execution_command_hash_is_canonical(tmp_path):
         "output_root": tmp_path / "out", "timeout_seconds": 30,
         "max_agent_arms": 2, "max_cost_usd": Decimal("0.16"),
         "max_new_arms": 2, "canary": True, "agent_config_sha256": "f" * 64,
+        "case_limit": 1,
     }
     assert execution_command_sha256(**values) == execution_command_sha256(**dict(reversed(list(values.items()))))
 
@@ -310,6 +344,7 @@ def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):
 
     def popen(command, **kwargs):
         captured["command"] = command
+        captured["env"] = kwargs["env"]
         return Process()
 
     monkeypatch.setattr("tools.jeviphy_product_batch.subprocess.Popen", popen)
@@ -318,6 +353,7 @@ def test_product_arm_uses_local_docker_instead_of_modal(tmp_path, monkeypatch):
     assert captured["command"][-2:] == ["--environment-class", "docker"]
     assert captured["command"][2] == "mini-swe-agent[full]==2.4.6"
     assert "swebench_modal.yaml" not in captured["command"]
+    assert captured["env"]["MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT"] == "1"
 
 
 def _product_record(arm, instance_id, *, status="completed", cost="0.02"):

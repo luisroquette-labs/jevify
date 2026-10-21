@@ -102,13 +102,17 @@ The ten-arm v6 run is historical diagnostic evidence only. It exposed that mini-
 
 The three-arm v7 run is historical diagnostic evidence only. It exposed misleading cost-ceiling language and an arm-at-a-time wrapper that discarded a reusable Docker image between paired arms. The replacement run labels mini-swe-agent cost values as post-response stop thresholds, reserves chunks of 12 arms already permitted by this specification, and uses a fresh run root. No v7 record is pooled into the replacement run.
 
+The one-arm v8 run is historical diagnostic evidence only. Its Graphify arm started Docker immediately but produced no trajectory or cost before the 35-minute outer timeout. The replacement protocol disables mini-swe-agent's ten-attempt model retry loop, treats the outer timeout as infrastructure failure, checkpoints one pair at a time, and uses a fresh run root. No v8 record is pooled into the replacement run.
+
 ### PG5 — Remote compute
 
 Product generation and SWE-bench evaluation run in a managed GitHub Codespace through `codespace-manager`. The run proves the remote checkout SHA and clean state before execution. The Codespace is stopped after each command. No product benchmark or full suite runs directly on the Mac.
 
-The complete candidate run contains all 120 cases and 240 arms in the same environment class. Earlier Modal or partial runs remain historical evidence and are never pooled with the Docker candidate.
+The pre-GTM candidate run contains a deterministic, stratum-balanced 30-case subset and 60 arms in the same environment class. The complete frozen 120-case datasets remain the leakage-validation source. Earlier Modal or partial runs remain historical evidence and are never pooled with the Docker candidate.
 
-The run is split into resume-safe chunks of at most 12 new arms. Each chunk revalidates every pin, appends complete arm records, stops the Codespace afterward, and never seals the final report until all 240 expected arms exist. At a 35-minute arm timeout, one chunk has a 7-hour worst-case bound.
+The run is split into resume-safe chunks of exactly one paired case, at most two new arms. Each chunk revalidates every pin, appends complete arm records, stops the Codespace afterward, and never seals the final report until all 60 expected arms exist. At a 35-minute arm timeout, one chunk has a 70-minute worst-case bound.
+
+The model backend disables automatic retries with `MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=1`. A provider or outer wall timeout is infrastructure failure and stops before another paid arm. This prevents a stalled request from consuming the whole batch window or being retried with uncertain billing.
 
 ### PG6 — Unified evidence bundle
 
