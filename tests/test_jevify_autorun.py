@@ -20,6 +20,7 @@ from tools.jevify_autorun import (
     InvocationContext,
     auto,
     ensure_context,
+    finalize_update,
     inspect_context,
     plan_update,
     run_update,
@@ -227,6 +228,52 @@ def test_update_already_current_does_not_rewrite_graph(repo_with_graph):
     assert graph.read_bytes() == before
 
 
+def test_finalize_verifies_artifacts_and_health(repo_with_graph):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+
+    receipt = finalize_update(repo)
+
+    assert receipt.status == "updated"
+    assert receipt.pending_after.status == "current"
+    assert not any(receipt.health[key] for key in autorun.BLOCKING_HEALTH_KEYS)
+
+
+def test_finalize_blocker_restores_private_backup(repo_with_graph, monkeypatch):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+    accepted = graph.read_bytes()
+    backup = autorun._private_backup(graph)
+    graph.write_text("{interrupted", encoding="utf-8")
+    monkeypatch.setattr(
+        autorun,
+        "diagnose_file",
+        lambda *_a, **_k: {key: int(key == "dangling_endpoint_edges")
+                            for key in autorun.BLOCKING_HEALTH_KEYS},
+    )
+
+    receipt = finalize_update(repo, backup=backup)
+
+    assert receipt.status == "blocked"
+    assert graph.read_bytes() == accepted
+    assert backup is not None and not backup.exists()
+
+
+def test_finalize_rejects_blocking_health_count(repo_with_graph, monkeypatch):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+    backup = autorun._private_backup(graph)
+    summary = {key: 0 for key in autorun.BLOCKING_HEALTH_KEYS}
+    summary["dangling_endpoint_edges"] = 1
+    monkeypatch.setattr(autorun, "diagnose_file", lambda *_a, **_k: summary)
+
+    receipt = finalize_update(repo, backup=backup)
+
+    assert receipt.status == "blocked"
+    assert receipt.health["dangling_endpoint_edges"] == 1
+    assert backup is not None and not backup.exists()
+
+
 def test_semantic_update_returns_private_host_handoff(
     repo_with_graph, capsys,
 ):
@@ -328,13 +375,13 @@ def test_missing_or_malformed_persisted_commit_is_stale(repo_with_graph, value):
 
 
 @pytest.mark.parametrize(
-    ("initial", "expected"),
-    [("missing", ["extract", ".", "--code-only"]),
-     ("corrupt", ["extract", ".", "--code-only", "--force"]),
-     ("stale", ["update", "."])],
+    ("initial", "expected", "call_count"),
+    [("missing", ["extract", ".", "--code-only"], 2),
+     ("corrupt", ["extract", ".", "--code-only", "--force"], 2),
+     ("stale", ["update", "."], 1)],
 )
-def test_repair_runs_once_without_provider_credentials(
-    repo_with_graph, monkeypatch, initial, expected,
+def test_update_stages_run_without_provider_credentials(
+    repo_with_graph, monkeypatch, initial, expected, call_count,
 ):
     repo, graph = repo_with_graph
     if initial == "missing":
@@ -355,7 +402,7 @@ def test_repair_runs_once_without_provider_credentials(
         monkeypatch.setenv(key, "secret-sentinel")
     context = ensure_context(repo)
     assert context.head == _commit(repo)
-    assert len(calls) == 1
+    assert len(calls) == call_count
     command, repo_arg, env = calls[0]
     assert command == [sys.executable, "-m", "graphify", *expected]
     assert repo_arg == repo.resolve()
@@ -363,6 +410,8 @@ def test_repair_runs_once_without_provider_credentials(
     assert env["GRAPHIFY_BACKEND"] == "none"
     assert env["PYTHONHASHSEED"] == "0"
     assert not (set(autorun.PROVIDER_ENV_KEYS) & set(env))
+    if call_count == 2:
+        assert calls[1][0] == [sys.executable, "-m", "graphify", "cluster-only", "."]
 
 
 def test_failed_repair_does_not_retry(repo_with_graph, monkeypatch):

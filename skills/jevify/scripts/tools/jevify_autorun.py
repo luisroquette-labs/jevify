@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -16,6 +17,7 @@ from typing import Literal
 import networkx as nx
 
 from graphify.analyze import suggest_questions
+from graphify.diagnostics import diagnose_file
 from graphify.serve import _communities_from_graph, _query_graph_text, _read_graph
 from tools.jevify_graph_state import GraphFreshness, inspect_graph_freshness
 
@@ -35,6 +37,13 @@ PROVIDER_ENV_KEYS = (
     "AWS_SECRET_ACCESS_KEY",
     "AWS_SESSION_TOKEN",
     "AWS_SECURITY_TOKEN",
+)
+
+BLOCKING_HEALTH_KEYS = (
+    "missing_endpoint_edges",
+    "dangling_endpoint_edges",
+    "directed_same_endpoint_collapsed_edges",
+    "undirected_same_endpoint_collapsed_edges",
 )
 
 
@@ -85,6 +94,7 @@ class UpdateReceipt:
     backup_path: str | None = None
     report_path: str | None = None
     visualization: Literal["updated", "skipped", "unchanged"] = "unchanged"
+    health: dict[str, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -251,7 +261,7 @@ def _artifact_validation(
     graph_path: Path,
     stats: GraphStats,
     *,
-    env: dict[str, str],
+    env: Mapping[str, str],
     html_before: bytes | None,
 ) -> tuple[bool, str, str | None, Literal["updated", "skipped", "unchanged"]]:
     report = graph_path.parent / "GRAPH_REPORT.md"
@@ -293,12 +303,7 @@ def run_code_update(
             "blocked", route, before, None,
             state.freshness, None, diagnostic or "Graphify update failed",
         )
-    needs_visualization = env.get("GRAPHIFY_VIZ_NODE_LIMIT") != "0"
-    if route.operation == "extract" and graph_path.is_file() and (
-        not (graph_path.parent / "GRAPH_REPORT.md").is_file()
-        or (needs_visualization and not (graph_path.parent / "graph.html").is_file())
-        or (graph_path.parent / ".graph.html.stale").exists()
-    ):
+    if route.operation == "extract" and graph_path.is_file():
         cluster_command = [sys.executable, "-m", "graphify", "cluster-only", "."]
         clustered = _run_repair(cluster_command, state.context.repo, env)
         cluster_diagnostic = (clustered.stderr or clustered.stdout or "").strip()
@@ -383,6 +388,77 @@ def run_update(
     if state.status == "corrupt":
         state.context.graph.unlink()
     return run_code_update(state, route, _child_environment(), backup=backup)
+
+
+def _validated_backup(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    resolved = path.resolve()
+    if (
+        resolved.name != "graph.json"
+        or not resolved.parent.name.startswith("jevify-graph-backup-")
+        or not resolved.is_file()
+        or resolved.stat().st_mode & 0o077
+        or resolved.parent.stat().st_mode & 0o077
+    ):
+        raise ValueError("invalid Jevify graph backup")
+    return resolved
+
+
+def finalize_update(
+    cwd: Path,
+    *,
+    repo: Path | None = None,
+    graph: Path | None = None,
+    backup: Path | None = None,
+) -> UpdateReceipt:
+    state = inspect_context(cwd, repo=repo, graph=graph)
+    route = UpdateRoute("host_graphify", "update", "verify Graphify host workflow")
+    try:
+        accepted_backup = _validated_backup(backup)
+    except ValueError as exc:
+        return UpdateReceipt(
+            "blocked", route, None, None, state.freshness, None, str(exc),
+        )
+    before = _safe_graph_stats(accepted_backup)
+
+    def blocked(diagnostic: str, health: dict[str, int] | None = None) -> UpdateReceipt:
+        if accepted_backup is not None:
+            _restore_backup(accepted_backup, state.context.graph)
+        return UpdateReceipt(
+            "blocked", route, before, None, state.freshness, None,
+            diagnostic[:4096], health=health,
+        )
+
+    if state.status != "ready" or state.freshness.pending_total:
+        return blocked(state.diagnostic or "Graphify host workflow is incomplete")
+    try:
+        after = graph_stats(state.context.graph)
+        artifacts_ok, diagnostic, report_path, visualization = _artifact_validation(
+            state.context.graph,
+            after,
+            env=os.environ,
+            html_before=(state.context.graph.parent / "graph.html").read_bytes()
+            if (state.context.graph.parent / "graph.html").is_file() else None,
+        )
+        summary = diagnose_file(
+            state.context.graph, root=state.context.repo, max_examples=3,
+        )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        return blocked(str(exc))
+    health_keys = (*BLOCKING_HEALTH_KEYS, "self_loop_edges", "exact_duplicate_edges",
+                   "relation_variant_groups", "unverified_node_count")
+    health = {key: int(summary.get(key, 0) or 0) for key in health_keys}
+    if not artifacts_ok:
+        return blocked(diagnostic, health)
+    blockers = {key: health[key] for key in BLOCKING_HEALTH_KEYS if health[key]}
+    if blockers:
+        return blocked(f"blocking Graphify health counts: {blockers}", health)
+    _discard_backup(accepted_backup)
+    return UpdateReceipt(
+        "updated", route, before, after, state.freshness, state.freshness,
+        report_path=report_path, visualization=visualization, health=health,
+    )
 
 
 def ensure_context(

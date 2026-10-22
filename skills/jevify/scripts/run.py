@@ -14,7 +14,13 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from tools.jevify_autorun import ContextError, auto, inspect_context, run_update
+from tools.jevify_autorun import (
+    ContextError,
+    auto,
+    finalize_update,
+    inspect_context,
+    run_update,
+)
 
 
 def head(repo: Path) -> str:
@@ -64,6 +70,26 @@ def update(argv: list[str]) -> int:
     if receipt.status == "requires_host":
         return 20
     return 0 if receipt.status in {"already_current", "updated"} else 1
+
+
+def finalize(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="jevify finalize")
+    parser.add_argument("--repo", type=Path)
+    parser.add_argument("--graph", type=Path)
+    parser.add_argument("--backup", type=Path)
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    receipt = finalize_update(
+        Path.cwd(), repo=args.repo, graph=args.graph, backup=args.backup,
+    )
+    payload = asdict(receipt)
+    if args.json:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        print(f"Update: {receipt.status}")
+        if receipt.diagnostic:
+            print(receipt.diagnostic)
+    return 0 if receipt.status == "updated" else 1
 
 
 def benchmark(argv: list[str]) -> int:
@@ -117,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
         return doctor(arguments[1:])
     if arguments[0] == "update":
         return update(arguments[1:])
+    if arguments[0] == "finalize":
+        return finalize(arguments[1:])
     if arguments[0] == "query":
         from tools.jev_memory_pilot import main as query_main
 

@@ -27,6 +27,21 @@ def test_bare_invocation_is_autonomous_and_corpus_optional() -> None:
     assert "Do not stop the invocation to request a new key" in skill
 
 
+def test_update_contract_routes_semantic_work_through_graphify() -> None:
+    root = Path(__file__).resolve().parents[1]
+    skill = (root / "skills" / "jevify" / "SKILL.md").read_text(encoding="utf-8")
+    required = [
+        "$jevify --update",
+        "status=requires_host",
+        "use the installed Graphify skill",
+        "do not report success before finalize",
+        "do not use a paid provider",
+        "resume Jevify automatically",
+    ]
+
+    assert all(text in skill for text in required)
+
+
 def test_skill_bare_path_delegates_to_installed_runner() -> None:
     root = Path(__file__).resolve().parents[1]
     skill = (root / "skills/jevify/SKILL.md").read_text(encoding="utf-8")
