@@ -38,7 +38,12 @@ def doctor(argv: list[str]) -> int:
         checks["corpus_private"] = (
             args.corpus.is_file() and args.corpus.stat().st_mode & 0o077 == 0
         )
-    print(json.dumps({"ok": all(checks.values()), "checks": checks}, sort_keys=True))
+    freshness = asdict(state.freshness)
+    freshness["changed_by_type"] = dict(state.freshness.changed_by_type)
+    freshness["deleted_by_type"] = dict(state.freshness.deleted_by_type)
+    print(json.dumps({
+        "ok": all(checks.values()), "checks": checks, "freshness": freshness,
+    }, sort_keys=True))
     return 0 if all(checks.values()) else 1
 
 

@@ -15,6 +15,7 @@ import networkx as nx
 
 from graphify.analyze import suggest_questions
 from graphify.serve import _communities_from_graph, _query_graph_text, _read_graph
+from tools.jevify_graph_state import GraphFreshness, inspect_graph_freshness
 
 PROVIDER_ENV_KEYS = (
     "GEMINI_API_KEY",
@@ -50,6 +51,7 @@ class InvocationContext:
 class ContextState:
     status: Literal["ready", "missing", "corrupt", "stale"]
     context: InvocationContext
+    freshness: GraphFreshness
     loaded_graph: nx.Graph | None = None
     diagnostic: str = ""
 
@@ -98,15 +100,16 @@ def inspect_context(
         graph=resolved_graph,
         head=head,
     )
+    freshness = inspect_graph_freshness(resolved_repo, resolved_graph)
     if not resolved_graph.is_file():
-        return ContextState("missing", context, diagnostic="graph is missing")
+        return ContextState("missing", context, freshness, diagnostic="graph is missing")
     try:
         raw = json.loads(resolved_graph.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             raise ValueError("graph root is not an object")
         loaded = _read_graph(str(resolved_graph), query_mode=True)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        return ContextState("corrupt", context, diagnostic=str(exc))
+        return ContextState("corrupt", context, freshness, diagnostic=str(exc))
     persisted = raw.get("built_at_commit")
     normalized = loaded.graph.get("_built_at_commit")
     if (
@@ -115,8 +118,12 @@ def inspect_context(
         or normalized != persisted.strip()
         or normalized != context.head
     ):
-        return ContextState("stale", context, loaded, "graph commit differs from HEAD")
-    return ContextState("ready", context, loaded)
+        return ContextState(
+            "stale", context, freshness, loaded, "graph commit differs from HEAD",
+        )
+    if freshness.status != "current":
+        return ContextState("stale", context, freshness, loaded, freshness.diagnostic)
+    return ContextState("ready", context, freshness, loaded)
 
 
 def _repair_command(state: ContextState) -> list[str]:

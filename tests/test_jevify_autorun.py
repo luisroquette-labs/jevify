@@ -10,12 +10,22 @@ import networkx as nx
 import pytest
 from networkx.readwrite import json_graph
 
+from graphify.detect import save_manifest
+from skills.jevify.scripts.run import doctor
 from tools import jevify_autorun as autorun
+from tools import jevify_graph_state as graph_state
 from tools.jevify_autorun import ContextError, auto, ensure_context, inspect_context, select_question
+from tools.jevify_graph_state import inspect_graph_freshness
 
 
 def _commit(repo: Path) -> str:
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+
+def _git_status(repo: Path) -> str:
+    return subprocess.check_output(
+        ["git", "status", "--short"], cwd=repo, text=True,
+    )
 
 
 def _write_graph(path: Path, commit: object) -> None:
@@ -27,6 +37,17 @@ def _write_graph(path: Path, commit: object) -> None:
         data["built_at_commit"] = commit
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def write_graphify_manifest(repo: Path) -> Path:
+    path = repo / "graphify-out" / "manifest.json"
+    save_manifest(
+        {"code": [str(repo / "app.py")]},
+        manifest_path=str(path),
+        kind="both",
+        root=repo,
+    )
+    return path
 
 
 @pytest.fixture
@@ -41,7 +62,72 @@ def repo_with_graph(tmp_path: Path) -> tuple[Path, Path]:
                    cwd=repo, check=True)
     graph = repo / "graphify-out" / "graph.json"
     _write_graph(graph, _commit(repo))
+    write_graphify_manifest(repo)
     return repo, graph
+
+
+def test_same_head_with_modified_code_is_stale(repo_with_graph):
+    repo, _ = repo_with_graph
+    (repo / "app.py").write_text("def run(): return 2\n", encoding="utf-8")
+
+    state = inspect_context(repo)
+
+    assert state.status == "stale"
+    assert state.freshness.changed_by_type == (("code", 1),)
+    assert state.freshness.deleted == 0
+
+
+def test_same_head_with_new_document_is_stale(repo_with_graph):
+    repo, _ = repo_with_graph
+    (repo / "DECISION.md").write_text("# Decision\n", encoding="utf-8")
+
+    state = inspect_context(repo)
+
+    assert state.status == "stale"
+    assert state.freshness.requires_semantic_host is True
+
+
+def test_same_head_with_deleted_file_is_stale(repo_with_graph):
+    repo, _ = repo_with_graph
+    (repo / "app.py").unlink()
+
+    freshness = inspect_context(repo).freshness
+
+    assert freshness.deleted == 1
+    assert freshness.deleted_by_type == (("code", 1),)
+
+
+def test_doctor_freshness_scan_does_not_mutate_repo(repo_with_graph, capsys):
+    repo, graph = repo_with_graph
+    manifest = repo / "graphify-out" / "manifest.json"
+    before = {path: path.read_bytes() for path in (graph, manifest)}
+    status_before = _git_status(repo)
+
+    assert doctor(["--repo", str(repo)]) == 0
+
+    assert json.loads(capsys.readouterr().out)["freshness"]["status"] == "current"
+    assert {path: path.read_bytes() for path in (graph, manifest)} == before
+    assert _git_status(repo) == status_before
+
+
+def test_freshness_surfaces_sensitive_skip(repo_with_graph, monkeypatch):
+    repo, graph = repo_with_graph
+    monkeypatch.setattr(graph_state, "detect_incremental", lambda *_a, **_k: {
+        "new_files": {},
+        "deleted_files": [],
+        "skipped_sensitive": [".env.production"],
+    })
+
+    result = inspect_graph_freshness(repo, graph)
+
+    assert result.skipped_sensitive == (".env.production",)
+
+
+def test_malformed_manifest_is_unavailable_not_current(repo_with_graph):
+    repo, graph = repo_with_graph
+    (graph.parent / "manifest.json").write_text("{", encoding="utf-8")
+
+    assert inspect_graph_freshness(repo, graph).status == "unavailable"
 
 
 def test_ensure_context_uses_containing_git_root(repo_with_graph):

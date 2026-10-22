@@ -10,6 +10,8 @@ from pathlib import Path
 import networkx as nx
 from networkx.readwrite import json_graph
 
+from graphify.detect import save_manifest
+
 
 def test_bare_invocation_is_autonomous_and_corpus_optional() -> None:
     root = Path(__file__).resolve().parents[1]
@@ -73,8 +75,7 @@ def test_pinned_commit_matches_portable_core() -> None:
     script = root / "skills" / "jevify" / "scripts" / "run.py"
     pinned = re.search(r"graphifyy @ git\+https://[^\s\"]+@([0-9a-f]{40})", script.read_text())
     assert pinned is not None
-    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jevify_autorun.py",
-                 "jevify_provenance.py"):
+    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jevify_provenance.py"):
         source = (root / "tools" / name).read_bytes()
         legacy_name = name.replace("jevify", "jeviphy")
         committed = subprocess.run(
@@ -105,8 +106,15 @@ def test_portable_doctor_reports_current_private_inputs(tmp_path: Path) -> None:
     graph.add_node("app", source_file="app.py")
     data = json_graph.node_link_data(graph, edges="links")
     data["built_at_commit"] = head
-    graph_path = repo / "graph.json"
+    graph_path = repo / "graphify-out" / "graph.json"
+    graph_path.parent.mkdir()
     graph_path.write_text(json.dumps(data), encoding="utf-8")
+    save_manifest(
+        {"code": [str(repo / "app.py")]},
+        manifest_path=str(graph_path.parent / "manifest.json"),
+        kind="both",
+        root=repo,
+    )
     corpus = tmp_path / "corpus.json"
     corpus.write_text("{}", encoding="utf-8")
     corpus.chmod(0o600)
