@@ -159,7 +159,7 @@ available. Update-only invocations use `question: null` and `answer: null`.
 - Ruff, focused type checking, security checks, `mac-gate` preflight, GitHub
   checks, and Pages/Preview requirements pass on the same SHA.
 - Product demand, preference, repeat use, and willingness to pay are evaluated
-  separately by `.specs/tasks/draft/jevify-five-user-validation.feature.md`;
+  separately by `.specs/tasks/draft/jevify-smoke-validation.feature.md`;
   technical acceptance alone cannot promote Jevify beyond technical beta.
 
 ## Non-goals
