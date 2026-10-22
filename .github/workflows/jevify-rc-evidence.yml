@@ -1,0 +1,40 @@
+name: Jevify RC evidence
+
+on:
+  push:
+    tags: ["jevify-rc-*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jevify-rc-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-install-evidence:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.13"
+      - run: uv sync --frozen
+      - name: Run ten clean-home attempts
+        run: |
+          uv run --frozen python -m tools.jevify_install_eval \
+            --matrix benchmarks/jevify-v2/install-matrix.json \
+            --os macOS \
+            --candidate "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/jevify-install-evidence"
+          uv run --frozen python -m tools.jevify_install_eval \
+            --score-from "$RUNNER_TEMP/jevify-install-evidence/install-records.jsonl" \
+            --score-output "$RUNNER_TEMP/jevify-install-evidence/install-score.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jevify-macos-install-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/jevify-install-evidence/install-records.jsonl
+            ${{ runner.temp }}/jevify-install-evidence/install-score.json
+          retention-days: 30

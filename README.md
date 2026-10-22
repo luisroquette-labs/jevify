@@ -1,31 +1,33 @@
-# Jeviphy
+# Jevify
 
 <p align="center">
-  <a href="https://luisroquette-labs.github.io/jeviphy/"><img src="docs/logo-text.svg" width="400" alt="Jeviphy — memory-guided code search for Claude Code and Codex"/></a>
+  <a href="https://luisroquette-labs.github.io/jevify/"><img src="docs/logo-text.svg" width="400" alt="Jevify — memory-guided code search for Claude Code and Codex"/></a>
 </p>
 
-This fork is the home of [Jeviphy for Claude Code and Codex](skills/jeviphy/SKILL.md): an offline-first Graphify and Claude Mem skill with optional Jev relevance decisions. Jeviphy is available as a transparent technical beta. Graphify remains the graph engine, memory remains a hint, and JEV stays optional.
+This fork is the home of [Jevify for Claude Code and Codex](skills/jevify/SKILL.md): an offline-first Graphify and Claude Mem skill with optional Jev relevance decisions. Jevify is available as a transparent technical beta. Graphify remains the graph engine, memory remains a hint, and JEV stays optional.
 
-> **Current Jev requirement:** offline Graphify and Jeviphy features need no provider account. Using Jev live currently requires each user to have their own OpenRouter account, supply their own project-scoped API key as `JEV_MEMORY_PILOT_API_KEY`, and pay for their own requests. Jeviphy does not currently provide hosted Jev access, a shared key, or an OAuth sign-in flow.
+> **Current Jev requirement:** offline Graphify and Jevify features need no provider account. Using Jev live currently requires each user to have their own OpenRouter account, supply their own project-scoped API key as `JEV_MEMORY_PILOT_API_KEY`, and pay for their own requests. Jevify does not currently provide hosted Jev access, a shared key, or an OAuth sign-in flow.
 
-**Verified beta evidence:** 20/20 clean installs across Ubuntu and macOS, 30/30 zero-configuration cases without interaction, a passing Graphify compatibility receipt, and 8,601 local tests. The paid product benchmark stopped at 0/60; eight earlier pairs are diagnostic only. Read the [beta evidence and limits](docs/jeviphy-beta-evidence.md), inspect the [scorecard](benchmarks/jeviphy-beta/scorecard.md), or [see the live beta page](https://luisroquette-labs.github.io/jeviphy/).
+**Verified beta evidence:** 20/20 clean installs across Ubuntu and macOS, 30/30 zero-configuration cases without interaction, a passing Graphify compatibility receipt, and 8,608 local tests. The paid product benchmark stopped at 0/60; eight earlier pairs are diagnostic only. Read the [beta evidence and limits](docs/jevify-beta-evidence.md), inspect the [scorecard](benchmarks/jevify-beta/scorecard.md), or [see the live beta page](https://luisroquette-labs.github.io/jevify/).
 
-For Graphify, Claude Mem, or JEV review, use the [seven-slide visual presentation](docs/jeviphy-presentation.pdf), its [editable HTML source](docs/jeviphy-presentation.html), the [speaker notes](docs/jeviphy-presentation.md), the [one-page participant brief](docs/jeviphy-participant-brief.md), and the [evidence-bounded context for AI agents](docs/jeviphy-ai-context.md).
+For Graphify, Claude Mem, or JEV review, use the [seven-slide visual presentation](docs/jevify-presentation.pdf), its [editable HTML source](docs/jevify-presentation.html), the [speaker notes](docs/jevify-presentation.md), the [one-page participant brief](docs/jevify-participant-brief.md), and the [evidence-bounded context for AI agents](docs/jevify-ai-context.md).
 
-## Use Jeviphy
+## Use Jevify
 
-Jeviphy uses Graphify to build and query a code graph. It adds selected Claude Mem observations and can optionally use Jev to rank links between those observations and graph nodes. The Graphify engine remains a dependency; Jev calls are off by default.
+Jevify uses Graphify to build and query a code graph. It adds selected Claude Mem observations and can optionally use Jev to rank links between those observations and graph nodes. The Graphify engine remains a dependency; Jev calls are off by default.
 
-1. Clone this repository and install [`skills/jeviphy`](skills/jeviphy/SKILL.md) as a skill in Claude Code or Codex. The skill contains the build commands, corpus schema, and privacy rules.
-2. In Claude Code, ask `/jeviphy` to investigate a question in a repository. In Codex, ask `$jeviphy` the same question. Name the project and the observations you want considered.
-3. The skill checks that `graphify-out/graph.json` matches the repository HEAD, builds it offline if needed, and runs the original Graphify query as the baseline. The [runner](skills/jeviphy/scripts/run.py) accepts a selected corpus outside Git for an offline comparison.
+1. Clone this repository and install [`skills/jevify`](skills/jevify/SKILL.md) as a skill in Claude Code or Codex. The skill contains the build commands, corpus schema, and privacy rules.
+2. In Claude Code, ask `/jevify` to investigate a question in a repository. In Codex, ask `$jevify` the same question. Name the project and the observations you want considered.
+3. The skill checks that `graphify-out/graph.json` matches the repository HEAD, builds it offline if needed, and runs the original Graphify query as the baseline. The [runner](skills/jevify/scripts/run.py) accepts a selected corpus outside Git for an offline comparison.
 
-Add `--candidate-mode memory` to the runner for experimental memory candidates. Reviewed observation `source_paths` can guide two of the ten slots toward cited implementation files; without them, the earlier 7-question/3-memory rule applies. It changes candidate selection only; without valid decisions, the answer still uses the original Graphify query. See the [evaluation record](docs/jev-memory-pilot-evaluation.md) for the measured limits and the [five-stage roadmap](docs/jeviphy-roadmap.md) for the planned comparison and sales page.
-For the optional offline `fast-source` experiment, Jeviphy scores only nodes from cited files in one pass and uses the best three as Graphify traversal seeds. Without cited files, it delegates directly to Graphify. Historical experiment reports remain available for technical inspection, but they are not beta claims.
+Add `--candidate-mode memory` to the runner for experimental memory candidates. Reviewed observation `source_paths` can guide two of the ten slots toward cited implementation files; without them, the earlier 7-question/3-memory rule applies. It changes candidate selection only; without valid decisions, the answer still uses the original Graphify query. See the [evaluation record](docs/jev-memory-pilot-evaluation.md) for the measured limits and the [five-stage roadmap](docs/jevify-roadmap.md) for the planned comparison and sales page.
+For the optional offline `fast-source` experiment, Jevify scores only nodes from cited files in one pass and uses the best three as Graphify traversal seeds. Without cited files, it delegates directly to Graphify. Historical experiment reports remain available for technical inspection, but they are not beta claims.
+
+If Jevify appears much quicker than Graphify, first check whether Graphify rebuilt or searched the whole graph while Jevify reused a current graph with reviewed source paths. The [scope and latency explanation](docs/jevify-vs-graphify.md) separates graph construction, broad queries, bounded source queries, and live JEV latency.
 
 The v2 cohort uses real public issue and patch tasks, with synthetic reviewed-memory evidence derived before execution. It does not measure private production memory or end-to-end patch success. A 19-call paid Jev pilot did not improve top-five retrieval and added network latency, so Jev stays optional and outside the performance claim. Never put private memory corpora or payloads in a commit or PR. The code and skill are available under this repository's existing [Apache-2.0 license](LICENSE), subject to the licenses of any separate services used with it.
 
-Run the [one-command offline demo](docs/jeviphy-demo.md) to see a synthetic memory link change a Graphify result without an API key.
+Run the [one-command offline demo](docs/jevify-demo.md) to see a synthetic memory link change a Graphify result without an API key.
 
 ## Graphify base
 

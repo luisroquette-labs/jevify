@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "release": "technical_beta",
+  "allowed_claim": "Jevify is available as a transparent technical beta.",
+  "candidate": "a2f7aee09e2a768c295a9a163c1ceff325e8d40d",
+  "gates": {
+    "installation": {"attempts": 20, "successes": 20, "status": "pass"},
+    "zero_configuration": {"attempts": 30, "successes": 30, "interaction_required": 0, "status": "pass"},
+    "compatibility": {"graphify_compatible": true, "status": "pass"},
+    "local_suite": {"passed": 8608, "status": "pass"}
+  },
+  "product_benchmark": {
+    "v13": {"completed_pairs": 0, "planned_pairs": 60, "status": "stopped"},
+    "v11": {"completed_pairs": 8, "status": "diagnostic_only"}
+  },
+  "blocked_claims": [
+    "better than Graphify",
+    "faster than Graphify",
+    "more efficient than Graphify"
+  ],
+  "evidence_sha256": {
+    "installation": "972cc456a5ae46c99dcc9acf8081144e476085aa0d6ebc6f68c21671f6aa5829",
+    "zero_configuration": "e171df2ee74ebd7a044d9a98ad308a32ac243ba4b9d556ddd09b43b3b76a889b",
+    "compatibility": "c487660730bdb12c8f63312af5150eef316d1708d3e8be0e6da7017ec0a16ed2",
+    "v13_stop_receipt": "04c51bcba3dfe158da9bf2421fc46f50064d415b30522d8ca8d9c100b68169e7"
+  }
+}

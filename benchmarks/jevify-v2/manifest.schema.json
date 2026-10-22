@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/luisroquette-labs/jevify/benchmarks/jevify-v2/manifest.schema.json",
+  "title": "Jevify v2 frozen benchmark manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "graphify_commit", "dataset_id", "dataset_revision", "repos", "cases"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "graphify_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "dataset_id": {"const": "SWE-bench/SWE-bench_Multilingual"},
+    "dataset_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "repos": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "url", "language"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "url": {"type": "string", "pattern": "^https://github\\.com/"},
+          "language": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 120,
+      "maxItems": 120,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "repo_id", "base_commit", "stratum", "question", "timeout_seconds", "image", "fail_to_pass", "pass_to_pass", "gold_files", "gold_symbols", "memory", "holdout"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "repo_id": {"type": "string", "minLength": 1},
+          "base_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "stratum": {"enum": ["valid_source", "stale_source", "no_source", "ambiguous"]},
+          "question": {"type": "string", "minLength": 1},
+          "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 1800},
+          "image": {"type": "string", "minLength": 1},
+          "fail_to_pass": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "pass_to_pass": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "gold_files": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "gold_symbols": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "memory": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["summary", "source_paths", "source_commit", "reviewed_at"],
+            "properties": {
+              "summary": {"type": "string"},
+              "source_paths": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+              "source_commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+              "reviewed_at": {"type": ["string", "null"]}
+            }
+          },
+          "holdout": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

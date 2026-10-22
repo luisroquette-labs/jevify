@@ -266,7 +266,7 @@ def test_fast_source_without_cited_files_delegates_before_graph_load(
         text=True,
     )
     def unexpected_load(_path):
-        raise AssertionError("Jeviphy must not load the graph for an unscoped query")
+        raise AssertionError("Jevify must not load the graph for an unscoped query")
     monkeypatch.setattr("tools.jev_memory_pilot._read_graph", unexpected_load)
     assert main(["--repo", str(repo), "--graph", str(graph_path), "--corpus", str(corpus),
                  "--case-id", "q1", "--project", "demo", "--candidate-mode", "fast-source"]) == 0

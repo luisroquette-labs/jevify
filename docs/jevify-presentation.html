@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jevify — technical presentation</title>
+  <style>
+    :root { --ink:#0c1710; --paper:#f5f2e9; --green:#94f1a9; --coral:#ff6858; --muted:#59635c; --line:#b8beb8; }
+    * { box-sizing: border-box; }
+    html { background:#202620; }
+    body { margin:0; color:var(--ink); font-family:Arial, Helvetica, sans-serif; }
+    .slide { position:relative; width:1280px; height:720px; margin:24px auto; overflow:hidden; background:var(--paper); padding:58px 70px 50px; page-break-after:always; break-after:page; }
+    .slide:last-child { page-break-after:auto; break-after:auto; }
+    h1 { max-width:920px; margin:0; font-size:78px; line-height:.96; letter-spacing:-3px; }
+    h2 { max-width:1030px; margin:0 0 34px; font-size:48px; line-height:1.05; letter-spacing:-1.5px; }
+    h3 { margin:0 0 10px; font-size:25px; line-height:1.15; }
+    p { margin:0 0 18px; font-size:25px; line-height:1.35; }
+    .eyebrow { margin-bottom:28px; color:#b5382e; font-size:16px; font-weight:800; letter-spacing:2.3px; text-transform:uppercase; }
+    .logo { position:absolute; top:54px; right:64px; width:74px; height:74px; }
+    .page { position:absolute; right:66px; bottom:34px; color:var(--muted); font-size:16px; font-weight:700; }
+    .source { position:absolute; left:70px; bottom:34px; color:var(--muted); font-size:14px; }
+    .accent { color:#b5382e; }
+    .cover { display:flex; flex-direction:column; justify-content:center; padding-right:260px; }
+    .cover .mark { position:absolute; right:90px; width:210px; height:210px; }
+    .cover .subtitle { max-width:820px; margin-top:30px; font-size:29px; color:var(--muted); }
+    .rule { width:90px; height:9px; margin:30px 0; background:var(--coral); }
+    .flow { display:grid; grid-template-columns:1fr 64px 1fr 64px 1fr 64px 1fr; align-items:center; margin-top:70px; }
+    .flow strong { display:flex; min-height:160px; padding:28px; align-items:center; border-top:8px solid var(--ink); font-size:26px; line-height:1.15; }
+    .flow .memory { border-top-color:var(--coral); background:#ffded8; }
+    .flow .result { border-top-color:#3a9f57; background:#dcf8e2; }
+    .arrow { text-align:center; font-size:46px; color:var(--muted); }
+    .steps { display:grid; grid-template-columns:repeat(5, 1fr); gap:18px; align-items:start; margin-top:38px; }
+    .step { min-height:250px; border-top:8px solid var(--ink); padding-top:18px; }
+    .step b { display:block; margin-bottom:12px; color:#b5382e; font-size:42px; }
+    .step span { font-size:21px; line-height:1.3; }
+    .offline { position:absolute; left:70px; bottom:60px; max-width:970px; font-size:21px; font-weight:700; }
+    .chart { display:grid; grid-template-columns:260px 1fr 110px; gap:18px 20px; align-items:center; margin-top:12px; }
+    .chart .label { font-size:19px; font-weight:700; }
+    .bar { height:34px; background:#d7d8d2; }
+    .bar i { display:block; height:100%; background:var(--ink); }
+    .bar.green i { background:#3a9f57; }
+    .value { font-size:22px; font-weight:800; }
+    .pair-note { margin-top:24px; font-size:22px; }
+    .failed { display:grid; grid-template-columns:1.15fr .85fr; gap:70px; align-items:center; }
+    .failed .number { color:#b5382e; font-size:100px; font-weight:900; line-height:.9; }
+    .failed .caption { margin-top:12px; color:var(--muted); font-size:20px; }
+    .latency { border-left:8px solid var(--coral); padding-left:34px; }
+    .latency strong { display:block; margin:8px 0 28px; font-size:48px; }
+    .verdict { margin-top:24px; font-size:25px; font-weight:800; }
+    .evidence { display:grid; grid-template-columns:1fr 1fr; gap:70px; }
+    .evidence section { border-top:8px solid var(--ink); padding-top:20px; }
+    .evidence section:last-child { border-top-color:var(--coral); }
+    .evidence ul { margin:18px 0 0; padding-left:26px; }
+    .evidence li { margin:0 0 16px; font-size:21px; line-height:1.3; }
+    .asks { display:grid; grid-template-columns:repeat(3, 1fr); gap:34px; margin-top:30px; }
+    .ask { min-height:260px; border-top:8px solid var(--ink); padding-top:20px; }
+    .ask:nth-child(2) { border-top-color:#3a9f57; }
+    .ask:nth-child(3) { border-top-color:var(--coral); }
+    .ask p { font-size:21px; }
+    .cta { position:absolute; left:70px; bottom:58px; font-size:22px; font-weight:800; }
+    @media print { @page { size:13.333333in 7.5in; margin:0; } html { background:white; } .slide { margin:0; } }
+  </style>
+</head>
+<body>
+  <section class="slide cover">
+    <img class="mark" src="logo-icon.svg" alt="Jevify mark">
+    <div class="eyebrow">Transparent technical beta</div>
+    <h1>Jevify</h1>
+    <div class="rule"></div>
+    <p class="subtitle">Graphify code graphs with reviewed memory hints</p>
+    <p class="source">Graphify remains the graph engine</p><span class="page">01</span>
+  </section>
+
+  <section class="slide">
+    <img class="logo" src="logo-icon.svg" alt="">
+    <div class="eyebrow">Component boundary</div>
+    <h2>Graph structure and reviewed context stay separate</h2>
+    <div class="flow">
+      <strong>Graphify graph</strong><span class="arrow">›</span>
+      <strong class="memory">Reviewed source paths</strong><span class="arrow">›</span>
+      <strong>Jevify validation</strong><span class="arrow">›</span>
+      <strong class="result">Agent source check</strong>
+    </div>
+    <p class="source">Memory is a hint. The graph is navigation evidence. The agent verifies the source.</p><span class="page">02</span>
+  </section>
+
+  <section class="slide">
+    <img class="logo" src="logo-icon.svg" alt="">
+    <div class="eyebrow">Local workflow</div>
+    <h2>Five bounded steps with the original fallback</h2>
+    <div class="steps">
+      <div class="step"><b>1</b><span>Confirm graph and repository commit match</span></div>
+      <div class="step"><b>2</b><span>Read selected, reviewed observations</span></div>
+      <div class="step"><b>3</b><span>Validate source paths in the repository</span></div>
+      <div class="step"><b>4</b><span>Run bounded Graphify traversal</span></div>
+      <div class="step"><b>5</b><span>Fall back when evidence is absent or invalid</span></div>
+    </div>
+    <p class="offline">The default path runs offline. Paid JEV calls stay optional and require explicit approval.</p><span class="page">03</span>
+  </section>
+
+  <section class="slide">
+    <img class="logo" src="logo-icon.svg" alt="">
+    <div class="eyebrow">Beta evidence · candidate a2f7aee0</div>
+    <h2>The installation and zero-configuration gates passed</h2>
+    <div class="chart">
+      <span class="label">Clean installation</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">20 / 20</span>
+      <span class="label">Zero configuration</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">30 / 30</span>
+      <span class="label">Compatibility</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">pass</span>
+      <span class="label">Local test suite</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">8,608</span>
+    </div>
+    <p class="pair-note">Installation covered Ubuntu and macOS. Zero-configuration cases required no interaction.</p>
+    <p class="source">Evidence hashes are published in the beta scorecard</p><span class="page">04</span>
+  </section>
+
+  <section class="slide">
+    <img class="logo" src="logo-icon.svg" alt="">
+    <div class="eyebrow">Stopped evaluation</div>
+    <h2>The long product benchmark is closed for this beta</h2>
+    <div class="failed">
+      <div><div class="number">0 / 60</div><p class="caption">v13 stopped after the technical beta decision</p></div>
+      <div class="latency"><span>Earlier v11 run</span><strong>8 pairs</strong><span>classification</span><strong>diagnostic</strong><span>public proof</span></div>
+    </div>
+    <p class="verdict">No long benchmark or paid API run is part of the release decision.</p><span class="page">05</span>
+  </section>
+
+  <section class="slide">
+    <img class="logo" src="logo-icon.svg" alt="">
+    <div class="eyebrow">Evidence boundary</div>
+    <h2>What the technical beta supports</h2>
+    <div class="evidence">
+      <section><h3>Supported</h3><ul><li>Clean installation on Ubuntu and macOS</li><li>Zero-configuration execution without interaction</li><li>Graphify-compatible fallback</li><li>Offline default operation</li></ul></section>
+      <section><h3>Still open</h3><ul><li>Real-user task outcomes</li><li>Independent product evaluation</li><li>Results across more repositories and question types</li><li>Maintainer feedback on the interoperability boundary</li></ul></section>
+    </div>
+    <span class="page">06</span>
+  </section>
+
+  <section class="slide">
+    <img class="logo" src="logo-icon.svg" alt="">
+    <div class="eyebrow">Review request</div>
+    <h2>Three focused questions for maintainers</h2>
+    <div class="asks">
+      <div class="ask"><h3>Graphify</h3><p>Does the adapter preserve graph semantics and the original fallback?</p></div>
+      <div class="ask"><h3>Claude Mem</h3><p>Is reviewed <code>source_paths</code> metadata a safe interoperability boundary?</p></div>
+      <div class="ask"><h3>JEV</h3><p>Is the opt-in decision interface appropriate for a later independent evaluation?</p></div>
+    </div>
+    <p class="cta">Start with the beta scorecard, then inspect the offline demo and source contracts.</p><span class="page">07</span>
+  </section>
+</body>
+</html>

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "main", "jeviphy"]
+    branches: ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "main", "jevify"]
   pull_request:
-    branches: ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "main", "jeviphy"]
+    branches: ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "main", "jevify"]
   workflow_dispatch:
 
 jobs:
@@ -117,14 +117,14 @@ jobs:
 
       - name: bandit (static security analysis)
         run: >-
-          uv run --frozen bandit -r graphify skills/jeviphy/scripts/tools
+          uv run --frozen bandit -r graphify skills/jevify/scripts/tools
           tools/jev_memory_pilot.py tools/jev_memory_pilot_api.py
-          tools/jeviphy_demo.py tools/jeviphy_stress.py tools/jeviphy_full_stress.py
-          tools/jeviphy_paid_stress.py tools/jeviphy_product_batch.py
-          tools/jeviphy_product_dataset.py tools/jeviphy_product_eval.py
-          tools/jeviphy_evidence_bundle.py tools/jeviphy_install_eval.py
-          tools/jeviphy_reproduction.py tools/jeviphy_zero_config_eval.py
-          tools/jeviphy_claim_check.py -ll
+          tools/jevify_demo.py tools/jevify_stress.py tools/jevify_full_stress.py
+          tools/jevify_paid_stress.py tools/jevify_product_batch.py
+          tools/jevify_product_dataset.py tools/jevify_product_eval.py
+          tools/jevify_evidence_bundle.py tools/jevify_install_eval.py
+          tools/jevify_reproduction.py tools/jevify_zero_config_eval.py
+          tools/jevify_claim_check.py -ll
 
       - name: pip-audit (dependency vulnerabilities)
         run: uv run --frozen pip-audit --strict
