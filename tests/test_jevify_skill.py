@@ -80,7 +80,7 @@ def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
 def test_portable_skill_code_matches_project_code() -> None:
     root = Path(__file__).resolve().parents[1]
     for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jevify_autorun.py",
-                 "jevify_provenance.py"):
+                 "jevify_insights.py", "jevify_provenance.py"):
         source = (root / "tools" / name).read_bytes()
         assert source == (root / "skills" / "jevify" / "scripts" / "tools" / name).read_bytes()
 

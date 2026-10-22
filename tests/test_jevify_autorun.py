@@ -12,8 +12,10 @@ from networkx.readwrite import json_graph
 
 from graphify.detect import save_manifest
 from skills.jevify.scripts.run import doctor, update as update_command
+from skills.jevify.scripts.run import finalize as finalize_command
 from tools import jevify_autorun as autorun
 from tools import jevify_graph_state as graph_state
+from tools import jevify_insights as insights
 from tools.jevify_autorun import (
     ContextError,
     ContextState,
@@ -27,6 +29,7 @@ from tools.jevify_autorun import (
     select_question,
 )
 from tools.jevify_graph_state import GraphFreshness, inspect_graph_freshness
+from tools.jevify_insights import build_insights, query_result
 
 
 def _commit(repo: Path) -> str:
@@ -272,6 +275,76 @@ def test_finalize_rejects_blocking_health_count(repo_with_graph, monkeypatch):
     assert receipt.status == "blocked"
     assert receipt.health["dangling_endpoint_edges"] == 1
     assert backup is not None and not backup.exists()
+
+
+def test_insights_return_diversified_questions(repo_with_graph, monkeypatch):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path), query_mode=True)
+    monkeypatch.setattr(insights, "suggest_questions", lambda *_a, **_k: [
+        {"type": "ambiguous_edge", "question": "ambiguous", "why": "hint",
+         "low_confidence": True},
+        {"type": "bridge_node", "question": "bridge one", "why": "crosses",
+         "low_confidence": False},
+        {"type": "bridge_node", "question": "bridge two", "why": "crosses",
+         "low_confidence": False},
+        {"type": "isolated_nodes", "question": "isolated", "why": "gap"},
+    ])
+
+    bundle = build_insights(graph, graph_path)
+
+    assert 3 <= len(bundle.questions) <= 5
+    assert len({question.kind for question in bundle.questions}) >= 2
+    assert bundle.questions[0].text == "bridge one"
+    assert [question.text for question in bundle.questions].index("ambiguous") > 0
+
+
+def test_low_confidence_question_does_not_outrank_bridge(repo_with_graph, monkeypatch):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path), query_mode=True)
+    monkeypatch.setattr(insights, "god_nodes", lambda *_a, **_k: [])
+    monkeypatch.setattr(insights, "surprising_connections", lambda *_a, **_k: [])
+    monkeypatch.setattr(insights, "suggest_questions", lambda *_a, **_k: [
+        {"type": "ambiguous_edge", "question": "ambiguous", "why": "hint",
+         "low_confidence": True},
+        {"type": "bridge_node", "question": "bridge", "why": "crosses",
+         "low_confidence": False},
+    ])
+
+    bundle = build_insights(graph, graph_path)
+
+    assert [item.text for item in bundle.questions] == ["bridge", "ambiguous"]
+
+
+def test_question_text_deduplicates_repeated_labels(repo_with_graph, monkeypatch):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path), query_mode=True)
+    monkeypatch.setattr(insights, "suggest_questions", lambda *_a, **_k: [{
+        "type": "bridge_node",
+        "question": "Why does `SafeCleaner` connect `CleanupDestination`, `CleanupDestination`?",
+        "why": "bridge",
+    }])
+
+    text = build_insights(graph, graph_path).questions[0].text
+
+    assert text.count("`SafeCleaner`") == 1
+    assert text.count("`CleanupDestination`") == 1
+
+
+def test_update_only_does_not_call_graph_query(repo_with_graph, monkeypatch):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+    monkeypatch.setattr(autorun, "query_graphify_exact", lambda *_a: pytest.fail())
+
+    receipt = finalize_update(repo)
+
+    assert receipt.insights is not None
+
+
+def test_query_result_marks_truncated_answer():
+    result = query_result("[!] TRUNCATED: showing 5 of 20 nodes\n\nNODE A")
+
+    assert result.truncated is True
+    assert result.suggested_narrowing is not None
 
 
 def test_semantic_update_returns_private_host_handoff(
@@ -576,15 +649,14 @@ def test_auto_json_has_stable_envelope(repo_with_graph, monkeypatch, capsys):
                         lambda *_args: "exact answer\n")
     assert auto(["--question", "What calls run?", "--json"], repo) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {
-        "answer": "exact answer\n",
-        "graph": str((repo / "graphify-out/graph.json").resolve()),
-        "live_enrichment": "not_requested",
-        "mode": "graph_only",
-        "question": "What calls run?",
-        "repo": str(repo.resolve()),
-        "schema_version": 1,
-    }
+    assert payload["schema_version"] == 2
+    assert payload["answer"] == "exact answer\n"
+    assert payload["graph"] == str((repo / "graphify-out/graph.json").resolve())
+    assert payload["question"] == "What calls run?"
+    assert payload["update"]["status"] == "already_current"
+    assert payload["graph_stats"]["nodes"] == 1
+    assert payload["questions"]
+    assert payload["answer_truncated"] is False
 
 
 def test_in_process_graph_query_matches_direct_graphify(repo_with_graph):
@@ -595,7 +667,45 @@ def test_in_process_graph_query_matches_direct_graphify(repo_with_graph):
         capture_output=True, text=True, check=True,
         env={**os.environ, "GRAPHIFY_QUERY_LOG_DISABLE": "1"},
     ).stdout
-    assert autorun.query_graphify_exact(graph, graph_path, "run") == expected
+    assert autorun.query_graphify_exact(graph, graph_path, "run").answer == expected
+
+
+def test_finalize_json_uses_stable_insight_envelope(repo_with_graph, capsys):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+
+    assert finalize_command(["--repo", str(repo), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema_version"] == 2
+    assert payload["question"] is None
+    assert payload["answer"] is None
+    assert payload["update"]["status"] == "updated"
+    assert payload["graph_stats"]["nodes"] == 1
+    assert payload["questions"]
+
+
+def test_update_human_output_has_required_section_order(
+    repo_with_graph, monkeypatch, capsys,
+):
+    repo, _ = repo_with_graph
+    monkeypatch.setattr(insights, "diagnose_file", lambda *_a, **_k: {
+        "self_loop_edges": 2,
+    })
+
+    assert update_command(["--repo", str(repo)]) == 0
+    output = capsys.readouterr().out
+    sections = [
+        "Update", "Graph", "Health", "God Nodes", "Connections",
+        "Suggested Questions", "Memory / JEV",
+    ]
+
+    assert [output.index(section) for section in sections] == sorted(
+        output.index(section) for section in sections
+    )
+    assert len(output.splitlines()) <= 140
+    assert "self_loop_edges: 2" in output
+    assert "NODE node-200" not in output
 
 
 def test_ambiguous_or_mismatched_corpus_falls_back_once(

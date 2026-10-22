@@ -20,6 +20,13 @@ from graphify.analyze import suggest_questions
 from graphify.diagnostics import diagnose_file
 from graphify.serve import _communities_from_graph, _query_graph_text, _read_graph
 from tools.jevify_graph_state import GraphFreshness, inspect_graph_freshness
+from tools.jevify_insights import (
+    InsightBundle,
+    QueryResult,
+    SuggestedQuestion,
+    build_insights,
+    query_result,
+)
 
 PROVIDER_ENV_KEYS = (
     "GEMINI_API_KEY",
@@ -95,6 +102,7 @@ class UpdateReceipt:
     report_path: str | None = None
     visualization: Literal["updated", "skipped", "unchanged"] = "unchanged"
     health: dict[str, int] | None = None
+    insights: InsightBundle | None = None
 
 
 @dataclass(frozen=True)
@@ -103,9 +111,18 @@ class AutoResult:
     mode: Literal["graph_only", "memory_offline", "memory_live"]
     repo: str
     graph: str
-    question: str
+    question: str | None
     live_enrichment: Literal["not_requested", "applied", "skipped"]
-    answer: str
+    answer: str | None
+    freshness: dict
+    update: dict | None
+    graph_stats: dict
+    health: dict[str, int]
+    god_nodes: tuple[dict, ...]
+    connections: tuple[dict, ...]
+    questions: tuple[SuggestedQuestion, ...]
+    answer_truncated: bool = False
+    suggested_narrowing: str | None = None
 
 
 def _git_output(repo: Path, *args: str) -> str:
@@ -347,10 +364,25 @@ def run_code_update(
             state.freshness, inspected.freshness, artifact_diagnostic,
             report_path=report_path,
         )
+    if inspected.loaded_graph is None:
+        _restore_backup(backup, graph_path)
+        return UpdateReceipt(
+            "blocked", route, before, after, state.freshness, inspected.freshness,
+            "accepted graph could not be loaded", report_path=report_path,
+        )
+    try:
+        insights = build_insights(inspected.loaded_graph, graph_path)
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        _restore_backup(backup, graph_path)
+        return UpdateReceipt(
+            "blocked", route, before, after, state.freshness, inspected.freshness,
+            str(exc)[:4096], report_path=report_path,
+        )
     _discard_backup(backup)
     return UpdateReceipt(
         "updated", route, before, after, state.freshness, inspected.freshness,
         diagnostic=diagnostic, report_path=report_path, visualization=visualization,
+        insights=insights,
     )
 
 
@@ -370,9 +402,22 @@ def run_update(
     route = plan_update(state)
     before = _safe_graph_stats(state.context.graph)
     if route.kind == "none":
+        if state.loaded_graph is None:
+            return UpdateReceipt(
+                "blocked", route, before, None, state.freshness, None,
+                "current graph could not be loaded",
+            )
+        try:
+            insights = build_insights(state.loaded_graph, state.context.graph)
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            return UpdateReceipt(
+                "blocked", route, before, None, state.freshness, None,
+                str(exc)[:4096],
+            )
         return UpdateReceipt(
             "already_current", route, before, before,
             state.freshness, state.freshness,
+            insights=insights,
         )
     if route.kind == "blocked":
         return UpdateReceipt(
@@ -454,10 +499,17 @@ def finalize_update(
     blockers = {key: health[key] for key in BLOCKING_HEALTH_KEYS if health[key]}
     if blockers:
         return blocked(f"blocking Graphify health counts: {blockers}", health)
+    if state.loaded_graph is None:
+        return blocked("accepted graph could not be loaded", health)
+    try:
+        insights = build_insights(state.loaded_graph, state.context.graph)
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        return blocked(str(exc), health)
     _discard_backup(accepted_backup)
     return UpdateReceipt(
         "updated", route, before, after, state.freshness, state.freshness,
         report_path=report_path, visualization=visualization, health=health,
+        insights=insights,
     )
 
 
@@ -502,10 +554,13 @@ def select_question(graph: nx.Graph, graph_path: Path, question: str | None) -> 
     return selected[0]["question"].strip()
 
 
-def query_graphify_exact(graph: nx.Graph, graph_path: Path, question: str) -> str:
-    return _query_graph_text(
+def query_graphify_exact(
+    graph: nx.Graph, graph_path: Path, question: str,
+) -> QueryResult:
+    answer = _query_graph_text(
         graph, question, depth=2, graph_path=str(graph_path.resolve()), seeds=None,
     ) + "\n"
+    return query_result(answer)
 
 
 def _corpus_identity(path: Path) -> tuple[str, str, str]:
@@ -549,13 +604,13 @@ def auto(argv: list[str], cwd: Path) -> int:
     parser.add_argument("--max-requests", type=int, default=0)
     parser.add_argument("--threshold", type=float, default=0.8)
     args = parser.parse_args(argv)
-    state = inspect_context(cwd, repo=args.repo, graph=args.graph)
-    if state.status == "ready":
-        context = state.context
-        graph = state.loaded_graph
-    else:
-        context = ensure_context(cwd, repo=args.repo, graph=args.graph)
-        graph = _read_graph(str(context.graph), query_mode=True)
+    receipt = run_update(cwd, repo=args.repo, graph=args.graph)
+    if receipt.status not in {"already_current", "updated"}:
+        if receipt.status == "requires_host":
+            raise ContextError("semantic update requires the Graphify host workflow")
+        raise ContextError(f"graph update blocked: {receipt.diagnostic}")
+    context = inspect_context(cwd, repo=args.repo, graph=args.graph).context
+    graph = _read_graph(str(context.graph), query_mode=True)
     if graph is None:
         raise ContextError("graph could not be loaded")
     corpus_identity = None
@@ -571,6 +626,7 @@ def auto(argv: list[str], cwd: Path) -> int:
         corpus_status = "memory_enrichment=skipped"
         corpus_identity = None
     answer = None
+    graph_query = QueryResult("", False, None)
     mode: Literal["graph_only", "memory_offline", "memory_live"] = "graph_only"
     live_status: Literal["not_requested", "applied", "skipped"] = (
         "skipped" if args.live else "not_requested"
@@ -598,9 +654,28 @@ def auto(argv: list[str], cwd: Path) -> int:
             elif outcome.memory_applied:
                 mode = "memory_offline"
     if answer is None:
-        answer = query_graphify_exact(graph, context.graph, question)
+        queried = query_graphify_exact(graph, context.graph, question)
+        graph_query = queried if isinstance(queried, QueryResult) else query_result(queried)
+        answer = graph_query.answer
+    insight_bundle = receipt.insights or build_insights(graph, context.graph)
+    freshness = asdict(receipt.pending_after or receipt.pending_before)
     result = AutoResult(
-        1, mode, str(context.repo), str(context.graph), question, live_status, answer,
+        2,
+        mode,
+        str(context.repo),
+        str(context.graph),
+        question,
+        live_status,
+        answer,
+        freshness,
+        {"status": receipt.status, "route": asdict(receipt.route)},
+        asdict(insight_bundle.graph_stats),
+        insight_bundle.health,
+        insight_bundle.god_nodes,
+        insight_bundle.connections,
+        insight_bundle.questions,
+        graph_query.truncated,
+        graph_query.suggested_narrowing,
     )
     if args.json:
         print(json.dumps(asdict(result), sort_keys=True))

@@ -53,6 +53,83 @@ def doctor(argv: list[str]) -> int:
     return 0 if all(checks.values()) else 1
 
 
+def _receipt_payload(receipt, repo: Path | None, graph: Path | None) -> dict:
+    insights = receipt.insights
+    freshness = receipt.pending_after or receipt.pending_before
+    stats = insights.graph_stats if insights else receipt.after or receipt.before
+    payload = asdict(receipt)
+    payload.pop("insights", None)
+    payload.update({
+        "schema_version": 2,
+        "repo": str(repo.resolve()) if repo else None,
+        "graph": str(graph.resolve()) if graph else None,
+        "question": None,
+        "mode": "graph_only",
+        "live_enrichment": "not_requested",
+        "answer": None,
+        "freshness": asdict(freshness),
+        "update": {
+            "status": receipt.status,
+            "route": asdict(receipt.route),
+            "diagnostic": receipt.diagnostic,
+            "report_path": receipt.report_path,
+            "visualization": receipt.visualization,
+        },
+        "graph_stats": asdict(stats) if stats else {},
+        "health": insights.health if insights else receipt.health or {},
+        "god_nodes": list(insights.god_nodes) if insights else [],
+        "connections": list(insights.connections) if insights else [],
+        "questions": [asdict(item) for item in insights.questions] if insights else [],
+        "answer_truncated": False,
+        "suggested_narrowing": None,
+    })
+    return payload
+
+
+def _render_receipt(payload: dict) -> str:
+    update_data = payload["update"]
+    stats = payload["graph_stats"]
+    health = payload["health"]
+    lines = [
+        "Update",
+        f"- Status: {update_data['status']}",
+        f"- Route: {update_data['route']['kind']}",
+    ]
+    if update_data["diagnostic"]:
+        lines.append(f"- Diagnostic: {update_data['diagnostic']}")
+    lines.extend([
+        "",
+        "Graph",
+        f"- Nodes: {stats.get('nodes', 'unavailable')}",
+        f"- Edges: {stats.get('edges', 'unavailable')}",
+        f"- Communities: {stats.get('communities', 'unavailable')}",
+        "",
+        "Health",
+    ])
+    caveats = [(key, value) for key, value in health.items() if value]
+    lines.extend(
+        [f"- {key}: {value}" for key, value in caveats]
+        or ["- No nonzero diagnostic counts."]
+    )
+    lines.extend(["", "God Nodes"])
+    lines.extend(
+        [f"- {item['label']}: {item['degree']} relations" for item in payload["god_nodes"]]
+        or ["- None available."]
+    )
+    lines.extend(["", "Connections"])
+    lines.extend(
+        [f"- {item['source']} -> {item['target']}" for item in payload["connections"]]
+        or ["- None available."]
+    )
+    lines.extend(["", "Suggested Questions"])
+    lines.extend(
+        [f"- {item['text']}" for item in payload["questions"]]
+        or ["- No source-backed question signal."]
+    )
+    lines.extend(["", "Memory / JEV", "- Not requested; no paid API used."])
+    return "\n".join(lines) + "\n"
+
+
 def update(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="jevify update")
     parser.add_argument("--repo", type=Path)
@@ -60,13 +137,12 @@ def update(argv: list[str]) -> int:
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     receipt = run_update(Path.cwd(), repo=args.repo, graph=args.graph)
-    payload = asdict(receipt)
+    state = inspect_context(Path.cwd(), repo=args.repo, graph=args.graph)
+    payload = _receipt_payload(receipt, state.context.repo, state.context.graph)
     if args.json:
         print(json.dumps(payload, sort_keys=True))
     else:
-        print(f"Update: {receipt.status}")
-        if receipt.diagnostic:
-            print(receipt.diagnostic)
+        print(_render_receipt(payload), end="")
     if receipt.status == "requires_host":
         return 20
     return 0 if receipt.status in {"already_current", "updated"} else 1
@@ -82,13 +158,12 @@ def finalize(argv: list[str]) -> int:
     receipt = finalize_update(
         Path.cwd(), repo=args.repo, graph=args.graph, backup=args.backup,
     )
-    payload = asdict(receipt)
+    state = inspect_context(Path.cwd(), repo=args.repo, graph=args.graph)
+    payload = _receipt_payload(receipt, state.context.repo, state.context.graph)
     if args.json:
         print(json.dumps(payload, sort_keys=True))
     else:
-        print(f"Update: {receipt.status}")
-        if receipt.diagnostic:
-            print(receipt.diagnostic)
+        print(_render_receipt(payload), end="")
     return 0 if receipt.status == "updated" else 1
 
 
