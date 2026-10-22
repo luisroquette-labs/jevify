@@ -13,6 +13,8 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from graphify.detect import save_manifest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "scripts" / "install_jevify_skill.py"
@@ -70,6 +72,12 @@ def _fixture(path: Path) -> Path:
     graph_path = path / "graphify-out/graph.json"
     graph_path.parent.mkdir()
     graph_path.write_text(json.dumps(graph), encoding="utf-8")
+    save_manifest(
+        {"code": [str(path / "app.py")]},
+        manifest_path=str(graph_path.parent / "manifest.json"),
+        kind="both",
+        root=path,
+    )
     return graph_path
 
 
