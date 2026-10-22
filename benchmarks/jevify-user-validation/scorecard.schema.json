@@ -4,12 +4,28 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "completed", "graphify_usefulness", "jevify_usefulness", "preferred_next",
-    "novel_source_verified", "known_false_freshness", "known_false_update",
+    "completed", "comparison_start_mode", "target_resolution_correct",
+    "jevify_update_route", "structural_engine", "graphify_usefulness",
+    "jevify_usefulness", "preferred_next",
+    "novel_source_verified", "memory_mode", "memory_value", "attribution_correct",
+    "comparative_claim_status", "known_false_freshness", "known_false_update",
     "known_paid_requests", "validation_failure_count", "decision"
   ],
   "properties": {
     "completed": { "type": "boolean" },
+    "comparison_start_mode": {
+      "type": ["string", "null"],
+      "enum": ["warm", null]
+    },
+    "target_resolution_correct": { "type": "boolean" },
+    "jevify_update_route": {
+      "type": ["string", "null"],
+      "enum": ["already_current", "graphify_handoff", null]
+    },
+    "structural_engine": {
+      "type": ["string", "null"],
+      "enum": ["graphify", null]
+    },
     "graphify_usefulness": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
     "jevify_usefulness": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
     "preferred_next": {
@@ -17,13 +33,29 @@
       "enum": ["graphify", "jevify", "neither", null]
     },
     "novel_source_verified": { "type": "boolean" },
+    "memory_mode": {
+      "type": ["string", "null"],
+      "enum": ["graph_only", "reviewed_memory", null]
+    },
+    "memory_value": {
+      "type": ["string", "null"],
+      "enum": ["not_tested", "helpful", "not_helpful", null]
+    },
+    "attribution_correct": { "type": "boolean" },
+    "comparative_claim_status": {
+      "type": ["string", "null"],
+      "enum": ["not_made", "supported", "unsupported", null]
+    },
     "known_false_freshness": { "type": "integer", "minimum": 0 },
     "known_false_update": { "type": "integer", "minimum": 0 },
     "known_paid_requests": { "type": "integer", "minimum": 0 },
     "validation_failure_count": { "type": "integer", "minimum": 0 },
     "decision": {
       "type": "string",
-      "enum": ["proceed_to_external_validation", "revise_or_extension", "invalid_smoke"]
+      "enum": [
+        "proceed_to_memory_smoke", "proceed_to_external_validation",
+        "revise_or_extension", "invalid_smoke"
+      ]
     }
   }
 }

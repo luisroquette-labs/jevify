@@ -19,12 +19,20 @@ from tools.jevify_user_validation import (
 
 
 RECEIPT = {
-    "schema_version": 3,
+    "schema_version": 4,
     "stage": "operator_smoke",
     "operator_id": "operator-01",
     "tool_order": ["graphify", "jevify"],
     "recorded_at": "2026-10-22T15:00:00Z",
     "candidate_commit": "a" * 40,
+    "comparison_start_mode": "warm",
+    "target_resolution_correct": True,
+    "jevify_update_route": "graphify_handoff",
+    "structural_engine": "graphify",
+    "memory_mode": "reviewed_memory",
+    "memory_value": "helpful",
+    "attribution_correct": True,
+    "comparative_claim_status": "not_made",
     "freshness_correct": True,
     "update_correct": True,
     "graphify_usefulness": 3,
@@ -76,12 +84,20 @@ def test_private_content_keys_are_rejected(private_bundle, forbidden):
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        ({"schema_version": 2}, "schema version"),
+        ({"schema_version": 3}, "schema version"),
         ({"operator_id": "someone"}, "operator_id"),
         ({"tool_order": ["jevify", "graphify"]}, "tool order"),
         ({"graphify_usefulness": 6}, "rating"),
         ({"preferred_next": "unknown"}, "preferred_next"),
         ({"paid_request_count": -1}, "negative"),
+        ({"comparison_start_mode": "cold"}, "start mode"),
+        ({"jevify_update_route": "unknown"}, "update route"),
+        ({"structural_engine": "jevify"}, "structural engine"),
+        ({"memory_mode": "unknown"}, "memory mode"),
+        ({"memory_value": "unknown"}, "memory value"),
+        ({"memory_mode": "graph_only"}, "memory value must be not_tested"),
+        ({"memory_value": "not_tested"}, "reviewed memory must be rated"),
+        ({"comparative_claim_status": "unknown"}, "comparative claim status"),
         ({"recorded_at": "2026-10-22"}, "timezone"),
         ({"jevify_start_graph_sha256": "8" * 64}, "starting graph"),
         ({"jevify_start_manifest_sha256": "8" * 64}, "starting manifest"),
@@ -109,6 +125,14 @@ def _receipt() -> SmokeReceipt:
         tool_order=("graphify", "jevify"),
         recorded_at=datetime(2026, 10, 22, 15, tzinfo=timezone.utc),
         candidate_commit="a" * 40,
+        comparison_start_mode="warm",
+        target_resolution_correct=True,
+        jevify_update_route="graphify_handoff",
+        structural_engine="graphify",
+        memory_mode="reviewed_memory",
+        memory_value="helpful",
+        attribution_correct=True,
+        comparative_claim_status="not_made",
         freshness_correct=True,
         update_correct=True,
         graphify_usefulness=3,
@@ -131,6 +155,11 @@ def test_clear_signal_proceeds_to_external_validation():
     assert score(_receipt()).decision == "proceed_to_external_validation"
 
 
+def test_graph_only_signal_proceeds_to_memory_smoke():
+    receipt = replace(_receipt(), memory_mode="graph_only", memory_value="not_tested")
+    assert score(receipt).decision == "proceed_to_memory_smoke"
+
+
 @pytest.mark.parametrize(
     "change",
     [
@@ -138,6 +167,7 @@ def test_clear_signal_proceeds_to_external_validation():
         {"jevify_usefulness": 3},
         {"graphify_usefulness": 5},
         {"jevify_only_novel_source_verified": False},
+        {"memory_value": "not_helpful"},
     ],
 )
 def test_missing_signal_selects_revision_or_extension(change):
@@ -145,7 +175,17 @@ def test_missing_signal_selects_revision_or_extension(change):
 
 
 @pytest.mark.parametrize(
-    "change", [{"freshness_correct": False}, {"update_correct": False}, {"paid_request_count": 1}]
+    "change",
+    [
+        {"freshness_correct": False},
+        {"update_correct": False},
+        {"paid_request_count": 1},
+        {"target_resolution_correct": False},
+        {"attribution_correct": False},
+        {"comparative_claim_status": "unsupported"},
+        {"memory_mode": "graph_only"},
+        {"memory_value": "not_tested"},
+    ],
 )
 def test_safety_failure_invalidates_smoke(change):
     assert score(replace(_receipt(), **change)).decision == "invalid_smoke"
@@ -178,7 +218,7 @@ def test_validate_cli_rejects_safety_failure(private_bundle, capsys):
     bundle = private_bundle({**RECEIPT, "update_correct": False})
     with pytest.raises(SystemExit, match="2"):
         main(["validate", "--bundle", str(bundle)])
-    assert "false freshness/update" in capsys.readouterr().err
+    assert "unsafe or misattributed" in capsys.readouterr().err
 
 
 def test_score_cli_writes_bounded_outputs(private_bundle, tmp_path):

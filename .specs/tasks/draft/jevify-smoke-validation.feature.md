@@ -8,21 +8,23 @@ In one short operator session, does Jevify make Graphify easier to use and surfa
 useful, source-verifiable connection that direct Graphify does not surface for the same change?
 
 This is an early signal check. It is not a latency benchmark, proof of broad demand, or proof that
-JEV improves ranking.
+JEV improves ranking. Reviewed memory is allowed; live or precomputed JEV decisions are not.
 
 ## Protocol
 
 Luis compares `$graphify --update` and `$jevify --update` on two isolated copies of the same
-repository state and bounded diff. The order is Graphify then Jevify. Each condition receives five
+warm repository state and bounded diff. The starting graph, manifest, and diff hashes must match;
+a cold bootstrap compared with a warm no-op is invalid. The order is Graphify then Jevify. Each condition receives five
 minutes; ratings and source verification receive five minutes. The session ends after 15 minutes.
 There is no recruiting, later-use observation, or follow-up window.
 
 ## Gates
 
-Proceed to external validation only when Jevify is preferred, scores at least `4/5`, scores higher
-than Graphify, surfaces a Jevify-only useful connection verified in source, makes no false freshness
-or update claim, and makes no paid request. Otherwise select `revise_or_extension` for a safe
-completed smoke or `invalid_smoke` for incomplete or unsafe evidence.
+Graphify is always the structural engine; Jevify may route to it, verify its outputs, and query the
+result. A graph-only run cannot prove memory value. It may proceed only to a reviewed-memory smoke.
+Proceed to external validation only when reviewed memory is helpful and the prior value gates pass.
+Wrong target resolution, wrong attribution, unsupported comparative claims, false freshness/update
+claims, paid requests, or unequal starting conditions invalidate the smoke.
 
 ## Privacy
 
