@@ -18,6 +18,7 @@ import networkx as nx
 
 from graphify.analyze import suggest_questions
 from graphify.diagnostics import diagnose_file
+from graphify.paths import write_json_atomic
 from graphify.serve import _communities_from_graph, _query_graph_text, _read_graph
 from tools.jevify_graph_state import GraphFreshness, inspect_graph_freshness
 from tools.jevify_insights import (
@@ -101,7 +102,7 @@ class GraphStats:
 @dataclass(frozen=True)
 class UpdateRoute:
     kind: Literal["none", "local_graphify", "host_graphify", "blocked"]
-    operation: Literal["none", "extract", "update"]
+    operation: Literal["none", "extract", "update", "refresh"]
     reason: str
 
 
@@ -221,6 +222,15 @@ def plan_update(state: ContextState) -> UpdateRoute:
         return UpdateRoute("blocked", "none", state.freshness.diagnostic)
     if state.status == "ready" and state.freshness.status == "current":
         return UpdateRoute("none", "none", "graph and manifest are current")
+    if (
+        state.status == "stale"
+        and state.loaded_graph is not None
+        and state.freshness.status == "current"
+    ):
+        return UpdateRoute(
+            "local_graphify", "refresh",
+            "manifest is current; refresh commit metadata and artifacts",
+        )
     operation: Literal["extract", "update"] = (
         "extract" if state.status in {"missing", "corrupt"} else "update"
     )
@@ -232,6 +242,8 @@ def plan_update(state: ContextState) -> UpdateRoute:
 
 
 def _repair_command(state: ContextState, route: UpdateRoute) -> list[str]:
+    if route.operation == "refresh":
+        return [sys.executable, "-m", "graphify", "cluster-only", "."]
     if route.operation == "update":
         return [sys.executable, "-m", "graphify", "update", "."]
     command = [sys.executable, "-m", "graphify", "extract", ".", "--code-only"]
@@ -351,6 +363,19 @@ def run_code_update(
     html = graph_path.parent / "graph.html"
     html_before = html.read_bytes() if html.is_file() else None
     command = _repair_command(state, route)
+    if route.operation == "refresh":
+        try:
+            data = json.loads(graph_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("graph root is not an object")
+            data["built_at_commit"] = state.context.head
+            write_json_atomic(graph_path, data, compact=True)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            _restore_backup(backup, graph_path)
+            return UpdateReceipt(
+                "blocked", route, before, None,
+                state.freshness, None, str(exc)[:4096],
+            )
     result = _run_repair(command, state.context.repo, env)
     diagnostic = (result.stderr or result.stdout or "").strip()[:4096]
     if result.returncode:
