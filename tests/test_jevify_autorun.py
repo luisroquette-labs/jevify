@@ -11,11 +11,21 @@ import pytest
 from networkx.readwrite import json_graph
 
 from graphify.detect import save_manifest
-from skills.jevify.scripts.run import doctor
+from skills.jevify.scripts.run import doctor, update as update_command
 from tools import jevify_autorun as autorun
 from tools import jevify_graph_state as graph_state
-from tools.jevify_autorun import ContextError, auto, ensure_context, inspect_context, select_question
-from tools.jevify_graph_state import inspect_graph_freshness
+from tools.jevify_autorun import (
+    ContextError,
+    ContextState,
+    InvocationContext,
+    auto,
+    ensure_context,
+    inspect_context,
+    plan_update,
+    run_update,
+    select_question,
+)
+from tools.jevify_graph_state import GraphFreshness, inspect_graph_freshness
 
 
 def _commit(repo: Path) -> str:
@@ -48,6 +58,15 @@ def write_graphify_manifest(repo: Path) -> Path:
         root=repo,
     )
     return path
+
+
+def _write_graph_artifacts(repo: Path, graph: Path) -> None:
+    _write_graph(graph, _commit(repo))
+    write_graphify_manifest(repo)
+    (graph.parent / "GRAPH_REPORT.md").write_text(
+        "## Summary\n- 1 nodes · 0 edges · 1 communities\n", encoding="utf-8",
+    )
+    (graph.parent / "graph.html").write_text("current", encoding="utf-8")
 
 
 @pytest.fixture
@@ -130,6 +149,148 @@ def test_malformed_manifest_is_unavailable_not_current(repo_with_graph):
     assert inspect_graph_freshness(repo, graph).status == "unavailable"
 
 
+@pytest.mark.parametrize(
+    ("status", "changed", "semantic", "expected"),
+    [
+        ("ready", (), False, "none"),
+        ("stale", (("code", 2),), False, "local_graphify"),
+        ("stale", (("code", 2), ("document", 1)), True, "host_graphify"),
+        ("missing", (("code", 2),), False, "local_graphify"),
+        ("missing", (("document", 1),), True, "host_graphify"),
+    ],
+)
+def test_plan_update_routes_by_pending_work(
+    repo_with_graph, status, changed, semantic, expected,
+):
+    repo, graph_path = repo_with_graph
+    freshness = GraphFreshness(
+        "current" if status == "ready" else "pending",
+        changed_by_type=changed,
+        requires_semantic_host=semantic,
+    )
+    state = ContextState(
+        status,
+        InvocationContext(repo, graph_path, _commit(repo)),
+        freshness=freshness,
+    )
+
+    assert plan_update(state).kind == expected
+
+
+def test_code_deletion_only_routes_to_local_graphify(repo_with_graph):
+    repo, graph = repo_with_graph
+    state = ContextState(
+        "stale",
+        InvocationContext(repo, graph, _commit(repo)),
+        GraphFreshness(
+            "pending", deleted=1, deleted_by_type=(("code", 1),),
+        ),
+    )
+
+    assert plan_update(state).kind == "local_graphify"
+
+
+def test_document_deletion_routes_through_full_graphify_flow(repo_with_graph):
+    repo, graph = repo_with_graph
+    state = ContextState(
+        "stale",
+        InvocationContext(repo, graph, _commit(repo)),
+        GraphFreshness(
+            "pending",
+            deleted=1,
+            deleted_by_type=(("document", 1),),
+            requires_semantic_host=True,
+        ),
+    )
+
+    assert plan_update(state).kind == "host_graphify"
+
+
+def test_unavailable_freshness_is_blocked(repo_with_graph):
+    repo, graph = repo_with_graph
+    state = ContextState(
+        "stale",
+        InvocationContext(repo, graph, _commit(repo)),
+        GraphFreshness("unavailable", diagnostic="manifest invalid"),
+    )
+
+    assert plan_update(state).kind == "blocked"
+
+
+def test_update_already_current_does_not_rewrite_graph(repo_with_graph):
+    repo, graph = repo_with_graph
+    before = graph.read_bytes()
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "already_current"
+    assert graph.read_bytes() == before
+
+
+def test_semantic_update_returns_private_host_handoff(
+    repo_with_graph, capsys,
+):
+    repo, graph = repo_with_graph
+    accepted = graph.read_bytes()
+    (repo / "DECISION.md").write_text("# Decision\n", encoding="utf-8")
+
+    assert update_command(["--repo", str(repo), "--json"]) == 20
+
+    payload = json.loads(capsys.readouterr().out)
+    backup = Path(payload["backup_path"])
+    assert payload["status"] == "requires_host"
+    assert graph.read_bytes() == accepted
+    assert backup.stat().st_mode & 0o077 == 0
+    assert backup.parent.stat().st_mode & 0o077 == 0
+    backup.unlink()
+    backup.parent.rmdir()
+
+
+def test_invalid_replacement_restores_last_accepted_graph(
+    repo_with_graph, monkeypatch,
+):
+    repo, graph = repo_with_graph
+    accepted = graph.read_bytes()
+    (repo / "app.py").write_text("def run(): return 2\n", encoding="utf-8")
+
+    def write_invalid(command, repo_arg, env):
+        graph.write_text("{broken", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(autorun, "_run_repair", write_invalid)
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "blocked"
+    assert graph.read_bytes() == accepted
+
+
+@pytest.mark.parametrize("artifact", ["report", "visualization"])
+def test_missing_or_stale_artifact_blocks_and_restores_graph(
+    repo_with_graph, monkeypatch, artifact,
+):
+    repo, graph = repo_with_graph
+    accepted = graph.read_bytes()
+    (repo / "app.py").write_text("def run(): return 2\n", encoding="utf-8")
+
+    def write_incomplete(command, repo_arg, env):
+        _write_graph_artifacts(repo, graph)
+        if artifact == "report":
+            (graph.parent / "GRAPH_REPORT.md").write_text(
+                "## Summary\n- 99 nodes · 0 edges · 1 communities\n", encoding="utf-8",
+            )
+        else:
+            (graph.parent / ".graph.html.stale").write_text("stale", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(autorun, "_run_repair", write_incomplete)
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "blocked"
+    assert graph.read_bytes() == accepted
+
+
 def test_ensure_context_uses_containing_git_root(repo_with_graph):
     repo, graph = repo_with_graph
     nested = repo / "src" / "nested"
@@ -169,7 +330,7 @@ def test_missing_or_malformed_persisted_commit_is_stale(repo_with_graph, value):
 @pytest.mark.parametrize(
     ("initial", "expected"),
     [("missing", ["extract", ".", "--code-only"]),
-     ("corrupt", ["extract", ".", "--force", "--code-only"]),
+     ("corrupt", ["extract", ".", "--code-only", "--force"]),
      ("stale", ["update", "."])],
 )
 def test_repair_runs_once_without_provider_credentials(
@@ -186,7 +347,7 @@ def test_repair_runs_once_without_provider_credentials(
 
     def fake_run(command, repo_arg, env):
         calls.append((command, repo_arg, env))
-        _write_graph(graph, _commit(repo))
+        _write_graph_artifacts(repo, graph)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(autorun, "_run_repair", fake_run)
@@ -199,6 +360,7 @@ def test_repair_runs_once_without_provider_credentials(
     assert command == [sys.executable, "-m", "graphify", *expected]
     assert repo_arg == repo.resolve()
     assert env["GRAPHIFY_NO_AUTO_REFRESH"] == "1"
+    assert env["GRAPHIFY_BACKEND"] == "none"
     assert env["PYTHONHASHSEED"] == "0"
     assert not (set(autorun.PROVIDER_ENV_KEYS) & set(env))
 
@@ -244,7 +406,7 @@ def test_invalid_repaired_graph_is_rejected_without_retry(repo_with_graph, monke
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(autorun, "_run_repair", no_output)
-    with pytest.raises(ContextError, match="repair produced invalid graph"):
+    with pytest.raises(ContextError, match="graph repair failed"):
         ensure_context(repo)
     assert len(calls) == 1
 

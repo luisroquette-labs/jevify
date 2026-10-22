@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -54,6 +56,35 @@ class ContextState:
     freshness: GraphFreshness
     loaded_graph: nx.Graph | None = None
     diagnostic: str = ""
+
+
+@dataclass(frozen=True)
+class GraphStats:
+    nodes: int
+    edges: int
+    communities: int
+    built_at_commit: str | None
+
+
+@dataclass(frozen=True)
+class UpdateRoute:
+    kind: Literal["none", "local_graphify", "host_graphify", "blocked"]
+    operation: Literal["none", "extract", "update"]
+    reason: str
+
+
+@dataclass(frozen=True)
+class UpdateReceipt:
+    status: Literal["already_current", "updated", "requires_host", "blocked"]
+    route: UpdateRoute
+    before: GraphStats | None
+    after: GraphStats | None
+    pending_before: GraphFreshness
+    pending_after: GraphFreshness | None
+    diagnostic: str = ""
+    backup_path: str | None = None
+    report_path: str | None = None
+    visualization: Literal["updated", "skipped", "unchanged"] = "unchanged"
 
 
 @dataclass(frozen=True)
@@ -126,14 +157,44 @@ def inspect_context(
     return ContextState("ready", context, freshness, loaded)
 
 
-def _repair_command(state: ContextState) -> list[str]:
-    if state.status == "missing":
-        operation = ["extract", ".", "--code-only"]
-    elif state.status == "corrupt":
-        operation = ["extract", ".", "--force", "--code-only"]
-    else:
-        operation = ["update", "."]
-    return [sys.executable, "-m", "graphify", *operation]
+def graph_stats(graph_path: Path) -> GraphStats:
+    graph = _read_graph(str(graph_path), query_mode=True)
+    communities = {
+        data.get("community")
+        for _, data in graph.nodes(data=True)
+        if data.get("community") is not None
+    }
+    built_at_commit = graph.graph.get("_built_at_commit")
+    return GraphStats(
+        graph.number_of_nodes(),
+        graph.number_of_edges(),
+        len(communities),
+        built_at_commit if isinstance(built_at_commit, str) else None,
+    )
+
+
+def plan_update(state: ContextState) -> UpdateRoute:
+    if state.freshness.status == "unavailable":
+        return UpdateRoute("blocked", "none", state.freshness.diagnostic)
+    if state.status == "ready" and state.freshness.status == "current":
+        return UpdateRoute("none", "none", "graph and manifest are current")
+    operation: Literal["extract", "update"] = (
+        "extract" if state.status in {"missing", "corrupt"} else "update"
+    )
+    if state.freshness.requires_semantic_host:
+        return UpdateRoute(
+            "host_graphify", operation, "semantic files require the Graphify host workflow",
+        )
+    return UpdateRoute("local_graphify", operation, "code-only Graphify update")
+
+
+def _repair_command(state: ContextState, route: UpdateRoute) -> list[str]:
+    if route.operation == "update":
+        return [sys.executable, "-m", "graphify", "update", "."]
+    command = [sys.executable, "-m", "graphify", "extract", ".", "--code-only"]
+    if state.status == "corrupt" or state.context.graph.is_file():
+        command.append("--force")
+    return command
 
 
 def _run_repair(command: list[str], repo: Path, env: dict[str, str]):
@@ -147,42 +208,192 @@ def _run_repair(command: list[str], repo: Path, env: dict[str, str]):
     )
 
 
-def ensure_context(
-    cwd: Path, *, repo: Path | None = None, graph: Path | None = None,
-) -> InvocationContext:
-    state = inspect_context(cwd, repo=repo, graph=graph)
-    if state.status == "ready":
-        return state.context
-    command = _repair_command(state)
+def _child_environment() -> dict[str, str]:
     env = os.environ.copy()
     for key in PROVIDER_ENV_KEYS:
         env.pop(key, None)
-    env.update(GRAPHIFY_NO_AUTO_REFRESH="1", PYTHONHASHSEED="0")
-    backup = None
-    if state.status == "corrupt":
-        handle, name = tempfile.mkstemp(
-            dir=state.context.graph.parent, prefix=".graph.json.jevify-corrupt-",
-        )
-        os.close(handle)
-        backup = Path(name)
-        os.replace(state.context.graph, backup)
+    env.update(
+        GRAPHIFY_BACKEND="none",
+        GRAPHIFY_NO_AUTO_REFRESH="1",
+        PYTHONHASHSEED="0",
+    )
+    return env
+
+
+def _private_backup(graph_path: Path) -> Path | None:
+    if not graph_path.is_file():
+        return None
+    directory = Path(tempfile.mkdtemp(prefix="jevify-graph-backup-"))
+    directory.chmod(0o700)
+    backup = directory / "graph.json"
+    shutil.copyfile(graph_path, backup)
+    backup.chmod(0o600)
+    return backup
+
+
+def _discard_backup(backup: Path | None) -> None:
+    if backup is None:
+        return
+    backup.unlink(missing_ok=True)
+    backup.parent.rmdir()
+
+
+def _restore_backup(backup: Path | None, graph_path: Path) -> None:
+    if backup is None:
+        graph_path.unlink(missing_ok=True)
+        return
+    graph_path.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(backup, graph_path)
+    backup.parent.rmdir()
+
+
+def _artifact_validation(
+    graph_path: Path,
+    stats: GraphStats,
+    *,
+    env: dict[str, str],
+    html_before: bytes | None,
+) -> tuple[bool, str, str | None, Literal["updated", "skipped", "unchanged"]]:
+    report = graph_path.parent / "GRAPH_REPORT.md"
     try:
-        result = _run_repair(command, state.context.repo, env)
-        if result.returncode:
-            diagnostic = (result.stderr or result.stdout or "no diagnostic").strip()[:1000]
-            raise ContextError(
-                f"graph repair failed ({' '.join(command)}): {diagnostic}"
+        report_text = report.read_text(encoding="utf-8")
+    except OSError as exc:
+        return False, str(exc), None, "unchanged"
+    expected = rf"- {stats.nodes} nodes .* {stats.edges} edges .* {stats.communities} communities"
+    if re.search(expected, report_text) is None:
+        return False, "GRAPH_REPORT.md counts do not match graph.json", str(report), "unchanged"
+    if env.get("GRAPHIFY_VIZ_NODE_LIMIT") == "0":
+        return True, "", str(report), "skipped"
+    html = graph_path.parent / "graph.html"
+    stale = graph_path.parent / ".graph.html.stale"
+    if not html.is_file() or stale.exists():
+        return False, "graph visualization is missing or stale", str(report), "unchanged"
+    html_after = html.read_bytes()
+    visualization = "updated" if html_before != html_after else "unchanged"
+    return True, "", str(report), visualization
+
+
+def run_code_update(
+    state: ContextState,
+    route: UpdateRoute,
+    env: dict[str, str],
+    *,
+    backup: Path | None,
+) -> UpdateReceipt:
+    graph_path = state.context.graph
+    before = _safe_graph_stats(backup)
+    html = graph_path.parent / "graph.html"
+    html_before = html.read_bytes() if html.is_file() else None
+    command = _repair_command(state, route)
+    result = _run_repair(command, state.context.repo, env)
+    diagnostic = (result.stderr or result.stdout or "").strip()[:4096]
+    if result.returncode:
+        _restore_backup(backup, graph_path)
+        return UpdateReceipt(
+            "blocked", route, before, None,
+            state.freshness, None, diagnostic or "Graphify update failed",
+        )
+    needs_visualization = env.get("GRAPHIFY_VIZ_NODE_LIMIT") != "0"
+    if route.operation == "extract" and graph_path.is_file() and (
+        not (graph_path.parent / "GRAPH_REPORT.md").is_file()
+        or (needs_visualization and not (graph_path.parent / "graph.html").is_file())
+        or (graph_path.parent / ".graph.html.stale").exists()
+    ):
+        cluster_command = [sys.executable, "-m", "graphify", "cluster-only", "."]
+        clustered = _run_repair(cluster_command, state.context.repo, env)
+        cluster_diagnostic = (clustered.stderr or clustered.stdout or "").strip()
+        diagnostic = "\n".join(filter(None, (diagnostic, cluster_diagnostic)))[:4096]
+        if clustered.returncode:
+            _restore_backup(backup, graph_path)
+            return UpdateReceipt(
+                "blocked", route, before, None, state.freshness, None,
+                diagnostic or "Graphify artifact generation failed",
             )
-        repaired = inspect_context(cwd, repo=state.context.repo, graph=state.context.graph)
-        if repaired.status != "ready":
-            raise ContextError(f"repair produced invalid graph: {repaired.diagnostic}")
-    except Exception:
-        if backup is not None:
-            os.replace(backup, state.context.graph)
-        raise
-    if backup is not None:
-        backup.unlink()
-    return repaired.context
+    inspected = inspect_context(
+        state.context.repo, repo=state.context.repo, graph=graph_path,
+    )
+    try:
+        after = graph_stats(graph_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        _restore_backup(backup, graph_path)
+        return UpdateReceipt(
+            "blocked", route, before, None,
+            state.freshness, inspected.freshness, str(exc)[:4096],
+        )
+    accepted = (
+        inspected.status == "ready"
+        and inspected.freshness.pending_total == 0
+        and inspected.context.head == after.built_at_commit
+    )
+    if not accepted:
+        _restore_backup(backup, graph_path)
+        return UpdateReceipt(
+            "blocked", route, before, after,
+            state.freshness, inspected.freshness,
+            inspected.diagnostic or "Graphify left pending work",
+        )
+    artifacts_ok, artifact_diagnostic, report_path, visualization = _artifact_validation(
+        graph_path, after, env=env, html_before=html_before,
+    )
+    if not artifacts_ok:
+        _restore_backup(backup, graph_path)
+        return UpdateReceipt(
+            "blocked", route, before, after,
+            state.freshness, inspected.freshness, artifact_diagnostic,
+            report_path=report_path,
+        )
+    _discard_backup(backup)
+    return UpdateReceipt(
+        "updated", route, before, after, state.freshness, inspected.freshness,
+        diagnostic=diagnostic, report_path=report_path, visualization=visualization,
+    )
+
+
+def _safe_graph_stats(graph_path: Path | None) -> GraphStats | None:
+    if graph_path is None:
+        return None
+    try:
+        return graph_stats(graph_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def run_update(
+    cwd: Path, *, repo: Path | None = None, graph: Path | None = None,
+) -> UpdateReceipt:
+    state = inspect_context(cwd, repo=repo, graph=graph)
+    route = plan_update(state)
+    before = _safe_graph_stats(state.context.graph)
+    if route.kind == "none":
+        return UpdateReceipt(
+            "already_current", route, before, before,
+            state.freshness, state.freshness,
+        )
+    if route.kind == "blocked":
+        return UpdateReceipt(
+            "blocked", route, before, None, state.freshness, None,
+            route.reason,
+        )
+    backup = _private_backup(state.context.graph)
+    if route.kind == "host_graphify":
+        return UpdateReceipt(
+            "requires_host", route, before, None, state.freshness, None,
+            route.reason, str(backup) if backup is not None else None,
+        )
+    if state.status == "corrupt":
+        state.context.graph.unlink()
+    return run_code_update(state, route, _child_environment(), backup=backup)
+
+
+def ensure_context(
+    cwd: Path, *, repo: Path | None = None, graph: Path | None = None,
+) -> InvocationContext:
+    receipt = run_update(cwd, repo=repo, graph=graph)
+    if receipt.status in {"already_current", "updated"}:
+        return inspect_context(cwd, repo=repo, graph=graph).context
+    if receipt.status == "requires_host":
+        raise ContextError("semantic update requires the Graphify host workflow")
+    raise ContextError(f"graph repair failed: {receipt.diagnostic}")
 
 
 def _community_labels(graph_path: Path, communities: dict[int, list[str]]) -> dict[int, str]:
@@ -241,7 +452,10 @@ def _corpus_identity(path: Path) -> tuple[str, str, str]:
     case_id, question = case.get("id"), case.get("question")
     if not isinstance(case_id, str) or not case_id or not isinstance(question, str) or not question.strip():
         raise ValueError("corpus case identity is invalid")
-    return case_id, next(iter(projects)), question.strip()
+    project = next(iter(projects))
+    if not isinstance(project, str):
+        raise ValueError("corpus observations need one project")
+    return case_id, project, question.strip()
 
 
 def auto(argv: list[str], cwd: Path) -> int:
