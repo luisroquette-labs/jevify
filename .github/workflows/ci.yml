@@ -124,7 +124,7 @@ jobs:
           tools/jevify_product_dataset.py tools/jevify_product_eval.py
           tools/jevify_evidence_bundle.py tools/jevify_install_eval.py
           tools/jevify_reproduction.py tools/jevify_zero_config_eval.py
-          tools/jevify_claim_check.py -ll
+          tools/jevify_claim_check.py tools/jevify_user_validation.py -ll
 
       - name: pip-audit (dependency vulnerabilities)
         run: uv run --frozen pip-audit --strict
