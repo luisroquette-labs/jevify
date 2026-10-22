@@ -328,6 +328,7 @@ def test_question_text_deduplicates_repeated_labels(repo_with_graph, monkeypatch
 
     assert text.count("`SafeCleaner`") == 1
     assert text.count("`CleanupDestination`") == 1
+    assert "  " not in text
 
 
 def test_update_only_does_not_call_graph_query(repo_with_graph, monkeypatch):

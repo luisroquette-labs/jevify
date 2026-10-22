@@ -77,6 +77,7 @@ def normalize_question(text: str) -> str:
             output += label
         cursor = match.end()
     output += text[cursor:]
+    output = re.sub(r"\s{2,}", " ", output)
     return re.sub(r"\s+([?,.])", r"\1", output).strip()
 
 
