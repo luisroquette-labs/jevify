@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
-#   "graphifyy @ git+https://github.com/luisroquette-labs/jevify.git@2801cb7f3cbb77af5b87d6d4dce2313b460ad18d",
+#   "graphifyy @ git+https://github.com/luisroquette-labs/jevify.git@253e1fd05972f0e107c75325a56d510260df80c3",
 # ]
 # ///
 """Portable Jevify entry point for Claude Code and Codex skill installs."""
@@ -14,7 +14,13 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from tools.jevify_autorun import ContextError, auto, inspect_context
+from tools.jevify_autorun import (
+    ContextError,
+    auto,
+    finalize_update,
+    inspect_context,
+    run_update,
+)
 
 
 def head(repo: Path) -> str:
@@ -38,8 +44,127 @@ def doctor(argv: list[str]) -> int:
         checks["corpus_private"] = (
             args.corpus.is_file() and args.corpus.stat().st_mode & 0o077 == 0
         )
-    print(json.dumps({"ok": all(checks.values()), "checks": checks}, sort_keys=True))
+    freshness = asdict(state.freshness)
+    freshness["changed_by_type"] = dict(state.freshness.changed_by_type)
+    freshness["deleted_by_type"] = dict(state.freshness.deleted_by_type)
+    print(json.dumps({
+        "ok": all(checks.values()), "checks": checks, "freshness": freshness,
+    }, sort_keys=True))
     return 0 if all(checks.values()) else 1
+
+
+def _receipt_payload(receipt, repo: Path | None, graph: Path | None) -> dict:
+    insights = receipt.insights
+    freshness = receipt.pending_after or receipt.pending_before
+    stats = insights.graph_stats if insights else receipt.after or receipt.before
+    payload = asdict(receipt)
+    payload.pop("insights", None)
+    payload.update({
+        "schema_version": 2,
+        "repo": str(repo.resolve()) if repo else None,
+        "graph": str(graph.resolve()) if graph else None,
+        "question": None,
+        "mode": "graph_only",
+        "live_enrichment": "not_requested",
+        "answer": None,
+        "freshness": asdict(freshness),
+        "update": {
+            "status": receipt.status,
+            "route": asdict(receipt.route),
+            "diagnostic": receipt.diagnostic,
+            "report_path": receipt.report_path,
+            "visualization": receipt.visualization,
+        },
+        "graph_stats": asdict(stats) if stats else {},
+        "health": insights.health if insights else receipt.health or {},
+        "god_nodes": list(insights.god_nodes) if insights else [],
+        "connections": list(insights.connections) if insights else [],
+        "questions": [asdict(item) for item in insights.questions] if insights else [],
+        "answer_truncated": False,
+        "suggested_narrowing": None,
+    })
+    return payload
+
+
+def _render_receipt(payload: dict) -> str:
+    update_data = payload["update"]
+    stats = payload["graph_stats"]
+    health = payload["health"]
+    lines = [
+        "Update",
+        f"- Status: {update_data['status']}",
+        f"- Route: {update_data['route']['kind']}",
+    ]
+    if update_data["diagnostic"]:
+        lines.append(f"- Diagnostic: {update_data['diagnostic']}")
+    lines.extend([
+        "",
+        "Graph",
+        f"- Nodes: {stats.get('nodes', 'unavailable')}",
+        f"- Edges: {stats.get('edges', 'unavailable')}",
+        f"- Communities: {stats.get('communities', 'unavailable')}",
+        "",
+        "Health",
+    ])
+    caveats = [(key, value) for key, value in health.items() if value]
+    lines.extend(
+        [f"- {key}: {value}" for key, value in caveats]
+        or ["- No nonzero diagnostic counts."]
+    )
+    lines.extend(["", "God Nodes"])
+    lines.extend(
+        [f"- {item['label']}: {item['degree']} relations" for item in payload["god_nodes"]]
+        or ["- None available."]
+    )
+    lines.extend(["", "Connections"])
+    lines.extend(
+        [f"- {item['source']} -> {item['target']}" for item in payload["connections"]]
+        or ["- None available."]
+    )
+    lines.extend(["", "Suggested Questions"])
+    lines.extend(
+        [f"- {item['text']}" for item in payload["questions"]]
+        or ["- No source-backed question signal."]
+    )
+    lines.extend(["", "Memory / JEV", "- Not requested; no paid API used."])
+    return "\n".join(lines) + "\n"
+
+
+def update(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="jevify update")
+    parser.add_argument("--repo", type=Path)
+    parser.add_argument("--graph", type=Path)
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    receipt = run_update(Path.cwd(), repo=args.repo, graph=args.graph)
+    state = inspect_context(Path.cwd(), repo=args.repo, graph=args.graph)
+    payload = _receipt_payload(receipt, state.context.repo, state.context.graph)
+    if args.json:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        print(_render_receipt(payload), end="")
+    if receipt.status == "requires_host":
+        return 20
+    return 0 if receipt.status in {"already_current", "updated"} else 1
+
+
+def finalize(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="jevify finalize")
+    parser.add_argument("--repo", type=Path)
+    parser.add_argument("--graph", type=Path)
+    parser.add_argument("--backup", type=Path)
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    receipt = finalize_update(
+        Path.cwd(), repo=args.repo, graph=args.graph, backup=args.backup,
+    )
+    state = inspect_context(Path.cwd(), repo=args.repo, graph=args.graph)
+    payload = _receipt_payload(receipt, state.context.repo, state.context.graph)
+    if args.json:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        print(_render_receipt(payload), end="")
+    return 0 if receipt.status == "updated" else 1
 
 
 def benchmark(argv: list[str]) -> int:
@@ -91,6 +216,10 @@ def main(argv: list[str] | None = None) -> int:
         return auto(arguments, Path.cwd())
     if arguments[0] == "doctor":
         return doctor(arguments[1:])
+    if arguments[0] == "update":
+        return update(arguments[1:])
+    if arguments[0] == "finalize":
+        return finalize(arguments[1:])
     if arguments[0] == "query":
         from tools.jev_memory_pilot import main as query_main
 

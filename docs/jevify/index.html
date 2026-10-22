@@ -287,7 +287,7 @@
       <div>
         <span class="eyebrow">Transparent technical beta</span>
         <h1><span>Connect the code graph.</span><span>Use reviewed context.</span></h1>
-        <p class="hero-copy"><strong>Jevify combines Graphify's code graph with reviewed memory hints.</strong> Claude Code and Codex receive a bounded starting point, then verify the cited source before answering.</p>
+        <p class="hero-copy"><strong>Jevify orchestrates the complete applicable Graphify workflow.</strong> It verifies graph freshness, adds prioritized questions, and can use reviewed memory as an optional source hint.</p>
         <div class="actions">
           <a class="button" href="#install">Install Jevify — free</a>
           <a class="button secondary" href="#what">See how it works</a>
@@ -309,7 +309,7 @@
 
     <section class="shell plain-language" id="what">
       <span class="kicker">Jevify in plain English</span>
-      <p class="one-line">Graphify maps your code. Jevify can use reviewed source paths to give your agent <mark>a bounded place to start.</mark></p>
+      <p class="one-line">Graphify builds the structural map. Jevify verifies it is current and gives your agent <mark>prioritized places to investigate.</mark></p>
       <div class="comparison">
         <article>
           <span class="comparison-tag">Structural source</span>
@@ -317,7 +317,7 @@
         </article>
         <article>
           <span class="comparison-tag">Reviewed context</span>
-          <div><h3>Memory supplies optional source hints.</h3><p>Jevify validates cited files and falls back to the original Graphify query when evidence is absent or invalid.</p></div>
+          <div><h3>Jevify orchestrates and prioritizes.</h3><p>It routes the applicable Graphify update, validates its artifacts, and adds questions plus optional reviewed source hints.</p></div>
         </article>
       </div>
     </section>
@@ -326,7 +326,7 @@
       <div class="shell proof-grid">
         <div class="stat"><strong>20/20</strong><span>clean installs<br>Ubuntu + macOS</span></div>
         <div class="stat"><strong>30/30</strong><span>zero-configuration cases<br>no interaction</span></div>
-        <div class="stat"><strong>8,608</strong><span>local tests<br>passed</span></div>
+        <div class="stat"><strong>8,644</strong><span>local tests<br>passed</span></div>
       </div>
     </div>
 
@@ -337,8 +337,8 @@
       </div>
       <div class="steps">
         <article class="step"><span class="step-num">01 / Map</span><div><h3>Graphify maps your repository.</h3><p>Your code becomes a local graph of files, functions, calls, and relationships.</p></div></article>
-        <article class="step"><span class="step-num">02 / Remember</span><div><h3>Reviewed memory cites the files.</h3><p>Past work records which source files were involved in a decision or fix.</p></div></article>
-        <article class="step"><span class="step-num">03 / Verify</span><div><h3>Jevify validates the hints.</h3><p>The agent inspects source before reporting a conclusion. Invalid hints return to the Graphify path.</p></div></article>
+        <article class="step"><span class="step-num">02 / Verify</span><div><h3>Jevify verifies the graph is current.</h3><p>The live corpus, Graphify manifest, report, visualization, and integrity diagnostics must agree.</p></div></article>
+        <article class="step"><span class="step-num">03 / Investigate</span><div><h3>Jevify prioritizes questions.</h3><p>Reviewed memory can add source hints, but structural conclusions still return to Graphify and source.</p></div></article>
       </div>
     </section>
 
@@ -358,6 +358,7 @@
           <div class="metric"><span>Clean installation</span><div class="track"><div class="bar jevify" style="width:100%"></div></div><span class="metric-value">20/20</span></div>
           <div class="metric"><span>Zero configuration</span><div class="track"><div class="bar jevify" style="width:100%"></div></div><span class="metric-value">30/30</span></div>
           <div class="metric"><span>Compatibility</span><div class="track"><div class="bar jevify" style="width:100%"></div></div><span class="metric-value">pass</span></div>
+          <div class="metric"><span>Bounded offline updates</span><div class="track"><div class="bar jevify" style="width:100%"></div></div><span class="metric-value">3/3</span></div>
           <div class="metric"><span>Product benchmark v13</span><div class="track"><div class="bar" style="width:0%"></div></div><span class="metric-value">0/60</span></div>
         </div>
         <div class="method">The eight v11 pairs are diagnostic only. No product comparison is part of the beta claim. Read the <a href="../jevify-beta-evidence.md">evidence package, hashes, and limits →</a></div>
@@ -393,7 +394,7 @@ $jevify investigate this repository
   </main>
 
   <footer>
-    <div class="shell footer-grid"><span>Jevify is built on Graphify</span><span>Technical beta · evidence dated 2026-10-21</span></div>
+    <div class="shell footer-grid"><span>Jevify is built on Graphify</span><span>Technical beta · evidence dated 2026-10-22</span></div>
   </footer>
 </body>
 </html>

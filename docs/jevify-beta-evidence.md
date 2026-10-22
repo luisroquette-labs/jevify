@@ -2,9 +2,10 @@
 
 ## Decision
 
-Jevify is available as a transparent technical beta. It combines Graphify's
-code graph with reviewed memory hints, optional JEV decisions, and independent
-evaluation requests. Graphify remains the graph engine.
+Jevify is available as a transparent technical beta. It orchestrates the
+complete applicable Graphify workflow, verifies freshness, and adds prioritized
+questions and optional reviewed memory. Graphify remains the structural engine;
+JEV remains optional.
 
 ## What passed
 
@@ -13,11 +14,17 @@ evaluation requests. Graphify remains the graph engine.
 | Clean installation | 20/20 across Ubuntu and macOS | `a2f7aee0` |
 | Zero configuration | 30/30 with no interaction | `a2f7aee0` |
 | Graphify compatibility | pass | `a2f7aee0` |
-| Local suite | 8,608 tests passed | release checkpoint |
+| Bounded update acceptance | 3/3 offline cases | `1132abd0` |
+| Local suite | 8,644 tests passed; 15 skipped | amplification checkpoint |
 
 GitHub CI later ran 8,602 tests per supported Python interpreter on the PR SHA.
 The public [machine-readable scorecard](../benchmarks/jevify-beta/scorecard.json)
 contains the evidence hashes.
+
+The [Graphify amplification evaluation](jevify-graphify-amplification-evaluation.md)
+records one code-only and two mixed cases. All produced current artifacts, five
+questions, zero blocking integrity findings, and zero paid requests. It is
+technical compatibility evidence, not a comparative product result.
 
 ## What stopped
 

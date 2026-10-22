@@ -17,7 +17,7 @@ uv run "$JEVIFY_SKILL_DIR/scripts/run.py" auto
 ```
 
 Pass an explicit question as `auto --question "..."`.
-Do not reproduce auto discovery in the host prompt: the runner resolves the Git root, repairs the graph once when needed, selects a useful
+Do not reproduce auto discovery in the host prompt: the runner resolves the Git root, verifies the graph, selects a useful
 question, and completes the offline Graphify query. Do not ask the user to choose a repository,
 question, corpus, mode, or credential. Check cited source files before presenting conclusions.
 
@@ -38,7 +38,26 @@ It checks the current repository and graph; add `--corpus PATH` to check private
 `query` accepts the existing strict pilot arguments; `benchmark`
 runs five or more paired offline retrieval passes for one frozen v2 case.
 
-1. Use `auto`; repository discovery, graph validation, and one bounded repair belong to the runner.
+### `$jevify --update`
+
+1. Run `uv run "$JEVIFY_SKILL_DIR/scripts/run.py" update --json`.
+2. If the status is `already_current` or `updated`, render the receipt.
+3. If `status=requires_host`, use the installed Graphify skill and its `--update`
+   workflow in the same repository with provider keys unset. Preserve any
+   `backup_path`, set `GRAPHIFY_BACKEND=none`, and preserve the same
+   `GRAPHIFY_VIZ_NODE_LIMIT` value. During this flow,
+   do not use a paid provider and do not report success before finalize.
+4. Run `uv run "$JEVIFY_SKILL_DIR/scripts/run.py" finalize --json`, adding
+   `--backup PATH` when the update receipt contains one.
+5. After verification, resume Jevify automatically only when finalize confirms a current manifest,
+   valid report and visualization, and zero blocking integrity counts. On any
+   failure, restore the backup when present and report `blocked`.
+
+Do not ask for a repository, provider key, question, mode, or permission to
+continue this handoff. The Graphify skill is the structural engine; Jevify only
+routes and verifies its workflow.
+
+1. Use `auto`; repository discovery and graph validation belong to the runner.
 2. When approved project observations are available, retrieve only the relevant ones through the supported Claude Mem bridge or another approved export. Keep the corpus outside Git, with mode `0700` on its directory and `0600` on files. Never read the Claude Mem database directly. Use the [memory workflow](references/memory.md) and [corpus schema](references/corpus.md). Otherwise continue with the graph-only baseline.
 3. Use the strict legacy interface only for an explicit evaluation. Example:
 

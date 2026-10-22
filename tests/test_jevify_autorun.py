@@ -10,12 +10,36 @@ import networkx as nx
 import pytest
 from networkx.readwrite import json_graph
 
+from graphify.detect import save_manifest
+from skills.jevify.scripts.run import doctor, update as update_command
+from skills.jevify.scripts.run import finalize as finalize_command
 from tools import jevify_autorun as autorun
-from tools.jevify_autorun import ContextError, auto, ensure_context, inspect_context, select_question
+from tools import jevify_graph_state as graph_state
+from tools import jevify_insights as insights
+from tools.jevify_autorun import (
+    ContextError,
+    ContextState,
+    InvocationContext,
+    auto,
+    ensure_context,
+    finalize_update,
+    inspect_context,
+    plan_update,
+    run_update,
+    select_question,
+)
+from tools.jevify_graph_state import GraphFreshness, inspect_graph_freshness
+from tools.jevify_insights import build_insights, query_result
 
 
 def _commit(repo: Path) -> str:
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+
+def _git_status(repo: Path) -> str:
+    return subprocess.check_output(
+        ["git", "status", "--short"], cwd=repo, text=True,
+    )
 
 
 def _write_graph(path: Path, commit: object) -> None:
@@ -27,6 +51,26 @@ def _write_graph(path: Path, commit: object) -> None:
         data["built_at_commit"] = commit
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def write_graphify_manifest(repo: Path) -> Path:
+    path = repo / "graphify-out" / "manifest.json"
+    save_manifest(
+        {"code": [str(repo / "app.py")]},
+        manifest_path=str(path),
+        kind="both",
+        root=repo,
+    )
+    return path
+
+
+def _write_graph_artifacts(repo: Path, graph: Path) -> None:
+    _write_graph(graph, _commit(repo))
+    write_graphify_manifest(repo)
+    (graph.parent / "GRAPH_REPORT.md").write_text(
+        "## Summary\n- 1 nodes · 0 edges · 1 communities\n", encoding="utf-8",
+    )
+    (graph.parent / "graph.html").write_text("current", encoding="utf-8")
 
 
 @pytest.fixture
@@ -41,7 +85,353 @@ def repo_with_graph(tmp_path: Path) -> tuple[Path, Path]:
                    cwd=repo, check=True)
     graph = repo / "graphify-out" / "graph.json"
     _write_graph(graph, _commit(repo))
+    write_graphify_manifest(repo)
     return repo, graph
+
+
+def test_same_head_with_modified_code_is_stale(repo_with_graph):
+    repo, _ = repo_with_graph
+    (repo / "app.py").write_text("def run(): return 2\n", encoding="utf-8")
+
+    state = inspect_context(repo)
+
+    assert state.status == "stale"
+    assert state.freshness.changed_by_type == (("code", 1),)
+    assert state.freshness.deleted == 0
+
+
+def test_same_head_with_new_document_is_stale(repo_with_graph):
+    repo, _ = repo_with_graph
+    (repo / "DECISION.md").write_text("# Decision\n", encoding="utf-8")
+
+    state = inspect_context(repo)
+
+    assert state.status == "stale"
+    assert state.freshness.requires_semantic_host is True
+
+
+def test_same_head_with_deleted_file_is_stale(repo_with_graph):
+    repo, _ = repo_with_graph
+    (repo / "app.py").unlink()
+
+    freshness = inspect_context(repo).freshness
+
+    assert freshness.deleted == 1
+    assert freshness.deleted_by_type == (("code", 1),)
+
+
+def test_doctor_freshness_scan_does_not_mutate_repo(repo_with_graph, capsys):
+    repo, graph = repo_with_graph
+    manifest = repo / "graphify-out" / "manifest.json"
+    before = {path: path.read_bytes() for path in (graph, manifest)}
+    status_before = _git_status(repo)
+
+    assert doctor(["--repo", str(repo)]) == 0
+
+    assert json.loads(capsys.readouterr().out)["freshness"]["status"] == "current"
+    assert {path: path.read_bytes() for path in (graph, manifest)} == before
+    assert _git_status(repo) == status_before
+
+
+def test_freshness_surfaces_sensitive_skip(repo_with_graph, monkeypatch):
+    repo, graph = repo_with_graph
+    monkeypatch.setattr(graph_state, "detect_incremental", lambda *_a, **_k: {
+        "new_files": {},
+        "deleted_files": [],
+        "skipped_sensitive": [".env.production"],
+    })
+
+    result = inspect_graph_freshness(repo, graph)
+
+    assert result.skipped_sensitive == (".env.production",)
+
+
+def test_malformed_manifest_is_unavailable_not_current(repo_with_graph):
+    repo, graph = repo_with_graph
+    (graph.parent / "manifest.json").write_text("{", encoding="utf-8")
+
+    assert inspect_graph_freshness(repo, graph).status == "unavailable"
+
+
+@pytest.mark.parametrize(
+    ("status", "changed", "semantic", "expected"),
+    [
+        ("ready", (), False, "none"),
+        ("stale", (("code", 2),), False, "local_graphify"),
+        ("stale", (("code", 2), ("document", 1)), True, "host_graphify"),
+        ("missing", (("code", 2),), False, "local_graphify"),
+        ("missing", (("document", 1),), True, "host_graphify"),
+    ],
+)
+def test_plan_update_routes_by_pending_work(
+    repo_with_graph, status, changed, semantic, expected,
+):
+    repo, graph_path = repo_with_graph
+    freshness = GraphFreshness(
+        "current" if status == "ready" else "pending",
+        changed_by_type=changed,
+        requires_semantic_host=semantic,
+    )
+    state = ContextState(
+        status,
+        InvocationContext(repo, graph_path, _commit(repo)),
+        freshness=freshness,
+    )
+
+    assert plan_update(state).kind == expected
+
+
+def test_code_deletion_only_routes_to_local_graphify(repo_with_graph):
+    repo, graph = repo_with_graph
+    state = ContextState(
+        "stale",
+        InvocationContext(repo, graph, _commit(repo)),
+        GraphFreshness(
+            "pending", deleted=1, deleted_by_type=(("code", 1),),
+        ),
+    )
+
+    assert plan_update(state).kind == "local_graphify"
+
+
+def test_document_deletion_routes_through_full_graphify_flow(repo_with_graph):
+    repo, graph = repo_with_graph
+    state = ContextState(
+        "stale",
+        InvocationContext(repo, graph, _commit(repo)),
+        GraphFreshness(
+            "pending",
+            deleted=1,
+            deleted_by_type=(("document", 1),),
+            requires_semantic_host=True,
+        ),
+    )
+
+    assert plan_update(state).kind == "host_graphify"
+
+
+def test_unavailable_freshness_is_blocked(repo_with_graph):
+    repo, graph = repo_with_graph
+    state = ContextState(
+        "stale",
+        InvocationContext(repo, graph, _commit(repo)),
+        GraphFreshness("unavailable", diagnostic="manifest invalid"),
+    )
+
+    assert plan_update(state).kind == "blocked"
+
+
+def test_update_already_current_does_not_rewrite_graph(repo_with_graph):
+    repo, graph = repo_with_graph
+    before = graph.read_bytes()
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "already_current"
+    assert graph.read_bytes() == before
+
+
+def test_finalize_verifies_artifacts_and_health(repo_with_graph):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+
+    receipt = finalize_update(repo)
+
+    assert receipt.status == "updated"
+    assert receipt.pending_after.status == "current"
+    assert not any(receipt.health[key] for key in autorun.BLOCKING_HEALTH_KEYS)
+
+
+def test_finalize_blocker_restores_private_backup(repo_with_graph, monkeypatch):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+    accepted = graph.read_bytes()
+    backup = autorun._private_backup(graph)
+    graph.write_text("{interrupted", encoding="utf-8")
+    monkeypatch.setattr(
+        autorun,
+        "diagnose_file",
+        lambda *_a, **_k: {key: int(key == "dangling_endpoint_edges")
+                            for key in autorun.BLOCKING_HEALTH_KEYS},
+    )
+
+    receipt = finalize_update(repo, backup=backup)
+
+    assert receipt.status == "blocked"
+    assert graph.read_bytes() == accepted
+    assert backup is not None and not backup.exists()
+
+
+def test_finalize_rejects_blocking_health_count(repo_with_graph, monkeypatch):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+    backup = autorun._private_backup(graph)
+    summary = {key: 0 for key in autorun.BLOCKING_HEALTH_KEYS}
+    summary["dangling_endpoint_edges"] = 1
+    monkeypatch.setattr(autorun, "diagnose_file", lambda *_a, **_k: summary)
+
+    receipt = finalize_update(repo, backup=backup)
+
+    assert receipt.status == "blocked"
+    assert receipt.health["dangling_endpoint_edges"] == 1
+    assert backup is not None and not backup.exists()
+
+
+def test_insights_return_diversified_questions(repo_with_graph, monkeypatch):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path), query_mode=True)
+    monkeypatch.setattr(insights, "suggest_questions", lambda *_a, **_k: [
+        {"type": "ambiguous_edge", "question": "ambiguous", "why": "hint",
+         "low_confidence": True},
+        {"type": "bridge_node", "question": "bridge one", "why": "crosses",
+         "low_confidence": False},
+        {"type": "bridge_node", "question": "bridge two", "why": "crosses",
+         "low_confidence": False},
+        {"type": "isolated_nodes", "question": "isolated", "why": "gap"},
+    ])
+
+    bundle = build_insights(graph, graph_path)
+
+    assert 3 <= len(bundle.questions) <= 5
+    assert len({question.kind for question in bundle.questions}) >= 2
+    assert bundle.questions[0].text == "bridge one"
+    assert [question.text for question in bundle.questions].index("ambiguous") > 0
+
+
+def test_low_confidence_question_does_not_outrank_bridge(repo_with_graph, monkeypatch):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path), query_mode=True)
+    monkeypatch.setattr(insights, "god_nodes", lambda *_a, **_k: [])
+    monkeypatch.setattr(insights, "surprising_connections", lambda *_a, **_k: [])
+    monkeypatch.setattr(insights, "suggest_questions", lambda *_a, **_k: [
+        {"type": "ambiguous_edge", "question": "ambiguous", "why": "hint",
+         "low_confidence": True},
+        {"type": "bridge_node", "question": "bridge", "why": "crosses",
+         "low_confidence": False},
+    ])
+
+    bundle = build_insights(graph, graph_path)
+
+    assert [item.text for item in bundle.questions] == ["bridge", "ambiguous"]
+
+
+def test_question_text_deduplicates_repeated_labels(repo_with_graph, monkeypatch):
+    _, graph_path = repo_with_graph
+    graph = autorun._read_graph(str(graph_path), query_mode=True)
+    monkeypatch.setattr(insights, "suggest_questions", lambda *_a, **_k: [{
+        "type": "bridge_node",
+        "question": "Why does `SafeCleaner` connect `CleanupDestination`, `CleanupDestination`?",
+        "why": "bridge",
+    }])
+
+    text = build_insights(graph, graph_path).questions[0].text
+
+    assert text.count("`SafeCleaner`") == 1
+    assert text.count("`CleanupDestination`") == 1
+    assert "  " not in text
+
+
+def test_question_text_caps_long_bridge_lists():
+    text = insights.normalize_question(
+        "Why does `A` connect `B` to `C`, `D`, `E`, `F`, `G`?"
+    )
+
+    assert text == "Why does `A` connect `B` to `C`, `D`, `E` and other communities?"
+
+
+def test_questions_drop_same_label_surprising_connections():
+    ranked = insights._rank_questions(
+        [{
+            "type": "surprising_connection",
+            "question": "What explains the connection between `Node` and `Node`?",
+            "why": "different IDs",
+        }],
+        [],
+        [],
+    )
+
+    assert ranked == ()
+
+
+def test_update_only_does_not_call_graph_query(repo_with_graph, monkeypatch):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+    monkeypatch.setattr(autorun, "query_graphify_exact", lambda *_a: pytest.fail())
+
+    receipt = finalize_update(repo)
+
+    assert receipt.insights is not None
+
+
+def test_query_result_marks_truncated_answer():
+    result = query_result("[!] TRUNCATED: showing 5 of 20 nodes\n\nNODE A")
+
+    assert result.truncated is True
+    assert result.suggested_narrowing is not None
+
+
+def test_semantic_update_returns_private_host_handoff(
+    repo_with_graph, capsys,
+):
+    repo, graph = repo_with_graph
+    accepted = graph.read_bytes()
+    (repo / "DECISION.md").write_text("# Decision\n", encoding="utf-8")
+
+    assert update_command(["--repo", str(repo), "--json"]) == 20
+
+    payload = json.loads(capsys.readouterr().out)
+    backup = Path(payload["backup_path"])
+    assert payload["status"] == "requires_host"
+    assert graph.read_bytes() == accepted
+    assert backup.stat().st_mode & 0o077 == 0
+    assert backup.parent.stat().st_mode & 0o077 == 0
+    backup.unlink()
+    backup.parent.rmdir()
+
+
+def test_invalid_replacement_restores_last_accepted_graph(
+    repo_with_graph, monkeypatch,
+):
+    repo, graph = repo_with_graph
+    accepted = graph.read_bytes()
+    (repo / "app.py").write_text("def run(): return 2\n", encoding="utf-8")
+
+    def write_invalid(command, repo_arg, env):
+        graph.write_text("{broken", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(autorun, "_run_repair", write_invalid)
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "blocked"
+    assert graph.read_bytes() == accepted
+
+
+@pytest.mark.parametrize("artifact", ["report", "visualization"])
+def test_missing_or_stale_artifact_blocks_and_restores_graph(
+    repo_with_graph, monkeypatch, artifact,
+):
+    repo, graph = repo_with_graph
+    accepted = graph.read_bytes()
+    (repo / "app.py").write_text("def run(): return 2\n", encoding="utf-8")
+
+    def write_incomplete(command, repo_arg, env):
+        _write_graph_artifacts(repo, graph)
+        if artifact == "report":
+            (graph.parent / "GRAPH_REPORT.md").write_text(
+                "## Summary\n- 99 nodes · 0 edges · 1 communities\n", encoding="utf-8",
+            )
+        else:
+            (graph.parent / ".graph.html.stale").write_text("stale", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(autorun, "_run_repair", write_incomplete)
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "blocked"
+    assert graph.read_bytes() == accepted
 
 
 def test_ensure_context_uses_containing_git_root(repo_with_graph):
@@ -81,13 +471,13 @@ def test_missing_or_malformed_persisted_commit_is_stale(repo_with_graph, value):
 
 
 @pytest.mark.parametrize(
-    ("initial", "expected"),
-    [("missing", ["extract", ".", "--code-only"]),
-     ("corrupt", ["extract", ".", "--force", "--code-only"]),
-     ("stale", ["update", "."])],
+    ("initial", "expected", "call_count"),
+    [("missing", ["extract", ".", "--code-only"], 2),
+     ("corrupt", ["extract", ".", "--code-only", "--force"], 2),
+     ("stale", ["update", "."], 1)],
 )
-def test_repair_runs_once_without_provider_credentials(
-    repo_with_graph, monkeypatch, initial, expected,
+def test_update_stages_run_without_provider_credentials(
+    repo_with_graph, monkeypatch, initial, expected, call_count,
 ):
     repo, graph = repo_with_graph
     if initial == "missing":
@@ -100,7 +490,7 @@ def test_repair_runs_once_without_provider_credentials(
 
     def fake_run(command, repo_arg, env):
         calls.append((command, repo_arg, env))
-        _write_graph(graph, _commit(repo))
+        _write_graph_artifacts(repo, graph)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(autorun, "_run_repair", fake_run)
@@ -108,13 +498,16 @@ def test_repair_runs_once_without_provider_credentials(
         monkeypatch.setenv(key, "secret-sentinel")
     context = ensure_context(repo)
     assert context.head == _commit(repo)
-    assert len(calls) == 1
+    assert len(calls) == call_count
     command, repo_arg, env = calls[0]
     assert command == [sys.executable, "-m", "graphify", *expected]
     assert repo_arg == repo.resolve()
     assert env["GRAPHIFY_NO_AUTO_REFRESH"] == "1"
+    assert env["GRAPHIFY_BACKEND"] == "none"
     assert env["PYTHONHASHSEED"] == "0"
     assert not (set(autorun.PROVIDER_ENV_KEYS) & set(env))
+    if call_count == 2:
+        assert calls[1][0] == [sys.executable, "-m", "graphify", "cluster-only", "."]
 
 
 def test_failed_repair_does_not_retry(repo_with_graph, monkeypatch):
@@ -158,7 +551,7 @@ def test_invalid_repaired_graph_is_rejected_without_retry(repo_with_graph, monke
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(autorun, "_run_repair", no_output)
-    with pytest.raises(ContextError, match="repair produced invalid graph"):
+    with pytest.raises(ContextError, match="graph repair failed"):
         ensure_context(repo)
     assert len(calls) == 1
 
@@ -279,15 +672,14 @@ def test_auto_json_has_stable_envelope(repo_with_graph, monkeypatch, capsys):
                         lambda *_args: "exact answer\n")
     assert auto(["--question", "What calls run?", "--json"], repo) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {
-        "answer": "exact answer\n",
-        "graph": str((repo / "graphify-out/graph.json").resolve()),
-        "live_enrichment": "not_requested",
-        "mode": "graph_only",
-        "question": "What calls run?",
-        "repo": str(repo.resolve()),
-        "schema_version": 1,
-    }
+    assert payload["schema_version"] == 2
+    assert payload["answer"] == "exact answer\n"
+    assert payload["graph"] == str((repo / "graphify-out/graph.json").resolve())
+    assert payload["question"] == "What calls run?"
+    assert payload["update"]["status"] == "already_current"
+    assert payload["graph_stats"]["nodes"] == 1
+    assert payload["questions"]
+    assert payload["answer_truncated"] is False
 
 
 def test_in_process_graph_query_matches_direct_graphify(repo_with_graph):
@@ -298,7 +690,45 @@ def test_in_process_graph_query_matches_direct_graphify(repo_with_graph):
         capture_output=True, text=True, check=True,
         env={**os.environ, "GRAPHIFY_QUERY_LOG_DISABLE": "1"},
     ).stdout
-    assert autorun.query_graphify_exact(graph, graph_path, "run") == expected
+    assert autorun.query_graphify_exact(graph, graph_path, "run").answer == expected
+
+
+def test_finalize_json_uses_stable_insight_envelope(repo_with_graph, capsys):
+    repo, graph = repo_with_graph
+    _write_graph_artifacts(repo, graph)
+
+    assert finalize_command(["--repo", str(repo), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema_version"] == 2
+    assert payload["question"] is None
+    assert payload["answer"] is None
+    assert payload["update"]["status"] == "updated"
+    assert payload["graph_stats"]["nodes"] == 1
+    assert payload["questions"]
+
+
+def test_update_human_output_has_required_section_order(
+    repo_with_graph, monkeypatch, capsys,
+):
+    repo, _ = repo_with_graph
+    monkeypatch.setattr(insights, "diagnose_file", lambda *_a, **_k: {
+        "self_loop_edges": 2,
+    })
+
+    assert update_command(["--repo", str(repo)]) == 0
+    output = capsys.readouterr().out
+    sections = [
+        "Update", "Graph", "Health", "God Nodes", "Connections",
+        "Suggested Questions", "Memory / JEV",
+    ]
+
+    assert [output.index(section) for section in sections] == sorted(
+        output.index(section) for section in sections
+    )
+    assert len(output.splitlines()) <= 140
+    assert "self_loop_edges: 2" in output
+    assert "NODE node-200" not in output
 
 
 def test_ambiguous_or_mismatched_corpus_falls_back_once(
