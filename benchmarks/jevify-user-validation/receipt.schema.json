@@ -1,81 +1,43 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://luisroquette-labs.github.io/jevify/schemas/user-validation-receipt-v1.json",
-  "title": "Jevify private participant receipt",
-  "oneOf": [
-    { "$ref": "#/$defs/initial" },
-    { "$ref": "#/$defs/terminal" }
+  "$id": "https://luisroquette-labs.github.io/jevify/schemas/operator-smoke-receipt-v3.json",
+  "title": "Jevify private operator smoke receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "stage", "operator_id", "tool_order", "recorded_at",
+    "candidate_commit", "freshness_correct", "update_correct", "graphify_usefulness",
+    "jevify_usefulness", "preferred_next", "jevify_only_novel_source_verified",
+    "paid_request_count", "graphify_run_sha256", "jevify_run_sha256",
+    "graphify_start_graph_sha256", "jevify_start_graph_sha256",
+    "graphify_start_manifest_sha256", "jevify_start_manifest_sha256",
+    "graphify_diff_sha256", "jevify_diff_sha256"
   ],
   "$defs": {
     "sha1": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "initial": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema_version", "stage", "participant_id", "eligible", "conflicted",
-        "tool_order", "initial_at", "initial_commit", "freshness_correct",
-        "update_correct", "graphify_usefulness", "jevify_usefulness",
-        "freshness_trust", "preferred_next", "jevify_only_novel_source_verified",
-        "paid_request_count", "graphify_run_sha256", "jevify_run_sha256",
-        "graphify_start_graph_sha256",
-        "jevify_start_graph_sha256", "graphify_start_manifest_sha256",
-        "jevify_start_manifest_sha256", "graphify_diff_sha256", "jevify_diff_sha256"
-      ],
-      "properties": {
-        "schema_version": { "const": 1 },
-        "stage": { "const": "initial" },
-        "participant_id": { "type": "string", "pattern": "^p0[1-5]$" },
-        "eligible": { "const": true },
-        "conflicted": { "const": false },
-        "tool_order": {
-          "type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true,
-          "items": { "enum": ["graphify", "jevify"] }
-        },
-        "initial_at": { "type": "string", "format": "date-time" },
-        "initial_commit": { "$ref": "#/$defs/sha1" },
-        "freshness_correct": { "type": "boolean" },
-        "update_correct": { "type": "boolean" },
-        "graphify_usefulness": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "jevify_usefulness": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "freshness_trust": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "preferred_next": { "enum": ["graphify", "jevify", "neither"] },
-        "jevify_only_novel_source_verified": { "type": "boolean" },
-        "paid_request_count": { "type": "integer", "minimum": 0 },
-        "graphify_run_sha256": { "$ref": "#/$defs/sha256" },
-        "jevify_run_sha256": { "$ref": "#/$defs/sha256" },
-        "graphify_start_graph_sha256": { "$ref": "#/$defs/sha256" },
-        "jevify_start_graph_sha256": { "$ref": "#/$defs/sha256" },
-        "graphify_start_manifest_sha256": { "$ref": "#/$defs/sha256" },
-        "jevify_start_manifest_sha256": { "$ref": "#/$defs/sha256" },
-        "graphify_diff_sha256": { "$ref": "#/$defs/sha256" },
-        "jevify_diff_sha256": { "$ref": "#/$defs/sha256" }
-      }
-    },
-    "terminal": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema_version", "stage", "participant_id", "observed_at", "repeat_at",
-        "later_commit", "repeat_used", "repeat_without_reminder", "reminder_sent",
-        "paid_request_count", "repeat_run_sha256", "initial_record_sha256"
-      ],
-      "properties": {
-        "schema_version": { "const": 1 },
-        "stage": { "const": "terminal" },
-        "participant_id": { "type": "string", "pattern": "^p0[1-5]$" },
-        "observed_at": { "type": "string", "format": "date-time" },
-        "repeat_at": { "type": ["string", "null"], "format": "date-time" },
-        "later_commit": { "oneOf": [{ "$ref": "#/$defs/sha1" }, { "type": "null" }] },
-        "repeat_used": { "type": "boolean" },
-        "repeat_without_reminder": { "type": "boolean" },
-        "reminder_sent": { "const": false },
-        "paid_request_count": { "type": "integer", "minimum": 0 },
-        "repeat_run_sha256": {
-          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
-        },
-        "initial_record_sha256": { "$ref": "#/$defs/sha256" }
-      }
-    }
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "properties": {
+    "schema_version": { "const": 3 },
+    "stage": { "const": "operator_smoke" },
+    "operator_id": { "const": "operator-01" },
+    "tool_order": { "const": ["graphify", "jevify"] },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "candidate_commit": { "$ref": "#/$defs/sha1" },
+    "freshness_correct": { "type": "boolean" },
+    "update_correct": { "type": "boolean" },
+    "graphify_usefulness": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "jevify_usefulness": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "preferred_next": { "enum": ["graphify", "jevify", "neither"] },
+    "jevify_only_novel_source_verified": { "type": "boolean" },
+    "paid_request_count": { "type": "integer", "minimum": 0 },
+    "graphify_run_sha256": { "$ref": "#/$defs/sha256" },
+    "jevify_run_sha256": { "$ref": "#/$defs/sha256" },
+    "graphify_start_graph_sha256": { "$ref": "#/$defs/sha256" },
+    "jevify_start_graph_sha256": { "$ref": "#/$defs/sha256" },
+    "graphify_start_manifest_sha256": { "$ref": "#/$defs/sha256" },
+    "jevify_start_manifest_sha256": { "$ref": "#/$defs/sha256" },
+    "graphify_diff_sha256": { "$ref": "#/$defs/sha256" },
+    "jevify_diff_sha256": { "$ref": "#/$defs/sha256" }
   }
 }

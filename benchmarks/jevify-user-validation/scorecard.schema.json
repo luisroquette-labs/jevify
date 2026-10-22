@@ -1,35 +1,29 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Jevify five-user aggregate scorecard",
+  "title": "Jevify operator smoke scorecard",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "completed", "prefer_jevify", "repeated_jevify", "novel_source_verified",
-    "known_false_freshness", "known_false_update", "known_paid_requests",
-    "safety_failure_participant_ids",
-    "invalid_participant_ids", "validation_failure_count",
-    "decision"
+    "completed", "graphify_usefulness", "jevify_usefulness", "preferred_next",
+    "novel_source_verified", "known_false_freshness", "known_false_update",
+    "known_paid_requests", "validation_failure_count", "decision"
   ],
   "properties": {
-    "completed": { "type": "integer", "minimum": 0 },
-    "prefer_jevify": { "type": "integer", "minimum": 0 },
-    "repeated_jevify": { "type": "integer", "minimum": 0 },
-    "novel_source_verified": { "type": "integer", "minimum": 0 },
+    "completed": { "type": "boolean" },
+    "graphify_usefulness": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+    "jevify_usefulness": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+    "preferred_next": {
+      "type": ["string", "null"],
+      "enum": ["graphify", "jevify", "neither", null]
+    },
+    "novel_source_verified": { "type": "boolean" },
     "known_false_freshness": { "type": "integer", "minimum": 0 },
     "known_false_update": { "type": "integer", "minimum": 0 },
     "known_paid_requests": { "type": "integer", "minimum": 0 },
-    "safety_failure_participant_ids": {
-      "type": "array", "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^p0[1-5]$" }
-    },
-    "invalid_participant_ids": {
-      "type": "array", "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^p0[1-5]$" }
-    },
     "validation_failure_count": { "type": "integer", "minimum": 0 },
     "decision": {
       "type": "string",
-      "enum": ["continue_product", "graphify_extension", "insufficient_evidence"]
+      "enum": ["proceed_to_external_validation", "revise_or_extension", "invalid_smoke"]
     }
   }
 }
