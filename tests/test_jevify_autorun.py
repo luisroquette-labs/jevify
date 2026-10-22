@@ -64,6 +64,17 @@ def write_graphify_manifest(repo: Path) -> Path:
     return path
 
 
+def test_read_query_graph_supports_graphify_without_query_mode(tmp_path, monkeypatch) -> None:
+    expected = nx.Graph()
+
+    def read_graph(path: str) -> nx.Graph:
+        assert path == str(tmp_path / "graph.json")
+        return expected
+
+    monkeypatch.setattr(autorun, "_read_graph", read_graph)
+    assert autorun._read_query_graph(tmp_path / "graph.json") is expected
+
+
 def _write_graph_artifacts(repo: Path, graph: Path) -> None:
     _write_graph(graph, _commit(repo))
     write_graphify_manifest(repo)
@@ -417,7 +428,10 @@ def test_update_only_does_not_call_graph_query(repo_with_graph, monkeypatch):
 
 
 def test_query_result_marks_truncated_answer():
-    result = query_result("[!] TRUNCATED: showing 5 of 20 nodes\n\nNODE A")
+    result = query_result(
+        "Graph: graph.json (20 nodes)\n\n"
+        "[!] TRUNCATED: showing 5 of 20 nodes\n\nNODE A"
+    )
 
     assert result.truncated is True
     assert result.suggested_narrowing is not None
