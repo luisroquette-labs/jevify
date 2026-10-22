@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.jevify_autorun import run_update
+
 FIXTURES = Path(__file__).parent / "fixtures"
 # Attributes that are not a function of the source tree: community ids are
 # assigned by clustering and are compared elsewhere (#3761).
@@ -145,3 +147,51 @@ def test_every_edge_endpoint_is_a_declared_node(builds):
             if e.get("source") not in declared or e.get("target") not in declared
         ]
         assert undeclared == [], f"edges with an undeclared endpoint: {undeclared[:10]}"
+
+
+def test_jevify_code_update_preserves_direct_graphify_output(tmp_path):
+    direct = tmp_path / "direct"
+    direct.mkdir()
+    source = direct / "app.py"
+    source.write_text("def run():\n    return 1\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=direct, check=True)
+    subprocess.run(["git", "add", "."], cwd=direct, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+         "commit", "-qm", "fixture"], cwd=direct, check=True,
+    )
+    first = subprocess.run(
+        [sys.executable, "-m", "graphify", "update", ".", "--force"],
+        cwd=direct, capture_output=True, text=True,
+        env={**os.environ, "GRAPHIFY_BACKEND": "none", "PYTHONHASHSEED": "0"},
+    )
+    assert first.returncode == 0, first.stderr
+    mediated = tmp_path / "mediated"
+    shutil.copytree(direct, mediated)
+    for repo in (direct, mediated):
+        (repo / "app.py").write_text(
+            "def run():\n    return helper()\n\ndef helper():\n    return 2\n",
+            encoding="utf-8",
+        )
+
+    direct_result = subprocess.run(
+        [sys.executable, "-m", "graphify", "update", "."],
+        cwd=direct, capture_output=True, text=True,
+        env={**os.environ, "GRAPHIFY_BACKEND": "none", "PYTHONHASHSEED": "0"},
+    )
+    assert direct_result.returncode == 0, direct_result.stderr
+    receipt = run_update(mediated)
+    assert receipt.status == "updated", receipt.diagnostic
+    direct_graph = json.loads((direct / "graphify-out/graph.json").read_text())
+    mediated_graph = json.loads((mediated / "graphify-out/graph.json").read_text())
+
+    assert Counter(map(_complete_key, direct_graph["nodes"])) == Counter(
+        map(_complete_key, mediated_graph["nodes"])
+    )
+    assert Counter(map(_complete_key, _links(direct_graph))) == Counter(
+        map(_complete_key, _links(mediated_graph))
+    )
+
+
+def _complete_key(item: dict) -> str:
+    return json.dumps(item, sort_keys=True)

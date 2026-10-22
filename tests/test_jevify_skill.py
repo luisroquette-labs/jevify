@@ -79,8 +79,10 @@ def test_portable_skill_entry_point_loads(tmp_path: Path) -> None:
 
 def test_portable_skill_code_matches_project_code() -> None:
     root = Path(__file__).resolve().parents[1]
-    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jevify_autorun.py",
-                 "jevify_insights.py", "jevify_provenance.py"):
+    for name in (
+        "jev_memory_pilot.py", "jev_memory_pilot_api.py", "jevify_autorun.py",
+        "jevify_graph_state.py", "jevify_insights.py", "jevify_provenance.py",
+    ):
         source = (root / "tools" / name).read_bytes()
         assert source == (root / "skills" / "jevify" / "scripts" / "tools" / name).read_bytes()
 
@@ -90,16 +92,15 @@ def test_pinned_commit_matches_portable_core() -> None:
     script = root / "skills" / "jevify" / "scripts" / "run.py"
     pinned = re.search(r"graphifyy @ git\+https://[^\s\"]+@([0-9a-f]{40})", script.read_text())
     assert pinned is not None
-    for name in ("jev_memory_pilot.py", "jev_memory_pilot_api.py", "jevify_provenance.py"):
+    for name in (
+        "jev_memory_pilot.py", "jev_memory_pilot_api.py", "jevify_autorun.py",
+        "jevify_graph_state.py", "jevify_insights.py", "jevify_provenance.py",
+    ):
         source = (root / "tools" / name).read_bytes()
-        legacy_name = name.replace("jevify", "jeviphy")
         committed = subprocess.run(
-            ["git", "show", f"{pinned.group(1)}:tools/{legacy_name}"],
+            ["git", "show", f"{pinned.group(1)}:tools/{name}"],
             cwd=root, check=True, capture_output=True,
         ).stdout
-        committed = committed.replace(b"JEVIPHY", b"JEVIFY")
-        committed = committed.replace(b"Jeviphy", b"Jevify")
-        committed = committed.replace(b"jeviphy", b"jevify")
         assert source == committed
 
 
