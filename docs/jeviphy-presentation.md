@@ -1,117 +1,68 @@
-# Jeviphy presentation
+# Jeviphy technical beta presentation
 
-Seven slides for a short maintainer or technical-team presentation. The wording is intentionally narrow: it describes the measured experiment without turning it into a universal product claim.
-
----
+Seven slides for Graphify, Claude Mem, and JEV maintainers. The deck uses only
+the release evidence in the technical beta scorecard.
 
 ## 1. Jeviphy
 
-### Source-aware code search from reviewed memory
+### Graphify code graphs with reviewed memory hints
 
-Jeviphy is an open-source Graphify fork and skill for Claude Code and Codex. It lets reviewed memory point the existing graph query toward cited source files.
+Jeviphy is an open-source Graphify fork and assistant skill for Claude Code and
+Codex. It keeps Graphify as the graph engine and adds a bounded path from
+reviewed memory to cited source files.
 
-**One sentence:** Graphify maps the repository; Jeviphy uses trustworthy source paths from memory to choose where the graph search should start.
+Speaker note: introduce this as a transparent technical beta.
 
-Speaker note: Jeviphy keeps Graphify as the graph engine. It does not replace the graph or modify its structure.
+## 2. Component boundary
 
----
+1. Graphify builds and queries the structural graph.
+2. Claude Mem or an approved export supplies reviewed source paths.
+3. Jeviphy validates the paths and runs bounded traversal.
+4. The coding agent verifies cited source before reporting a conclusion.
 
-## 2. The problem
+Memory does not become a structural graph assertion or runtime proof.
 
-A code graph can contain the right answer and still rank unrelated nodes first when the question is broad.
+## 3. Local workflow
 
-Reviewed project memory sometimes already names the implementation files that resolved the same issue. Jeviphy treats those file references as bounded search hints.
+1. Confirm the graph and repository commit match.
+2. Read only selected, reviewed observations.
+3. Validate cited paths in the working tree.
+4. Run bounded Graphify traversal.
+5. Use the original Graphify path when evidence is absent or invalid.
 
-```text
-question + reviewed memory source paths
-                    ↓
-          smaller candidate area
-                    ↓
-             Graphify traversal
-                    ↓
-       source-cited result for the agent
-```
+The default workflow is offline. Paid JEV calls require explicit approval.
 
-Speaker note: memory text is not accepted as runtime truth. The agent still checks the cited source.
+## 4. Beta evidence
 
----
+| Gate | Result |
+| --- | ---: |
+| Clean installation | 20/20 on Ubuntu and macOS |
+| Zero configuration | 30/30, no interaction |
+| Graphify compatibility | pass |
+| Local suite | 8,601 tests passed |
 
-## 3. The local workflow
+Speaker note: evidence hashes are in the machine-readable beta scorecard.
 
-1. Confirm that `graphify-out/graph.json` matches the repository commit.
-2. Read only the selected, reviewed observations.
-3. Validate their `source_paths` against the repository.
-4. Score nodes from those files and use the best three as Graphify traversal seeds.
-5. Fall back to the original unseeded Graphify query when evidence is absent or invalid.
+## 5. Stopped evaluation
 
-The default workflow is offline. Paid Jev calls are optional, off by default, and excluded from the performance result.
+The v13 product benchmark stopped at 0/60 after the technical beta decision.
+The eight v11 pairs are diagnostic only. No long benchmark or paid API run is
+part of this release decision.
 
-Speaker note: the `fast-source` mode is the measured path. The broader memory candidate mode remains experimental.
+## 6. Evidence boundary
 
----
+**Supported:** installation on two operating systems, zero-configuration
+execution, Graphify-compatible fallback, and an offline default path.
 
-## 4. Result on the frozen Click cohort
+**Still open:** real-user task outcomes, independent product evaluation,
+coverage across more repositories, and maintainer review of the integration
+boundary.
 
-Both arms used the same AST graph, source commit, 40 source-cited questions, machine, alternating order, and five timing passes.
+## 7. Review requests
 
-| Measure | Graphify | Jeviphy `fast-source` |
-| --- | ---: | ---: |
-| Exact target nodes in top five | 2/40 | **11/40** |
-| First-pass source answer hits | 22/40 | **32/40** |
-| Overall p50 | 183.92 ms | **79.63 ms** |
-| Overall p95 | 275.69 ms | **212.95 ms** |
-| Source p95 | 294.29 ms | **158.29 ms** |
+- **Graphify:** does the adapter preserve graph semantics and fallback behavior?
+- **Claude Mem:** is reviewed `source_paths` metadata a safe interoperability boundary?
+- **JEV:** is the opt-in decision interface appropriate for later independent evaluation?
 
-Jeviphy was faster in 198 of 200 paired source-backed runs. All control answers were byte-identical.
-
-Speaker note: say “performed better on the measured points in this experiment.” Do not say “Jeviphy is universally faster or better than Graphify.”
-
----
-
-## 5. The failed experiment matters
-
-A separate paid Jev pilot completed 19 calls on identical bounded candidate pools.
-
-- Top-five hits stayed at **4/19**.
-- API latency added **649.74 ms p50** and **1,083.09 ms p95**.
-- The experiment failed its advancement gate.
-
-Jev remains optional because this result does not support a quality or speed claim for model-based reranking.
-
-Speaker note: the positive result came from local source-cited retrieval, not from the paid Jev model.
-
----
-
-## 6. What the evidence supports
-
-**Supported**
-
-- A promising result for synthetic source-cited code questions.
-- Better measured retrieval and latency on one frozen Click cohort.
-- Offline operation with an exact Graphify fallback.
-- A reproducible 60-second demo with no API key.
-
-**Still open**
-
-- Real-user task outcomes.
-- Real-memory relevance gains.
-- Results across more repositories and question types.
-- The right interoperability boundary with Claude Mem and upstream Graphify.
-
----
-
-## 7. What we want reviewed
-
-### Graphify maintainers
-
-Is source-seeded traversal useful inside Graphify, or should Jeviphy remain an external adapter?
-
-### Claude Mem maintainers
-
-Is an optional, reviewed `source_paths` field a reasonable interoperability boundary?
-
-### Independent testers
-
-Can the frozen workflow be reproduced on another repository without weakening the fallback or privacy rules?
-
-Start with the [60-second offline demo](jeviphy-demo.md), then inspect the [independent comparison](jeviphy-independent-complete-workflow-20261018.md).
+Start with the [beta evidence](jeviphy-beta-evidence.md), then inspect the
+[offline demo](jeviphy-demo.md) and source contracts.

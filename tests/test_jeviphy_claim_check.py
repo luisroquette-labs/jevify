@@ -36,7 +36,17 @@ def test_positive_jev_attribution_requires_its_own_artifact():
         validate_public_claims(page, {"allowed_claim": RETRIEVAL_ONLY})
 
 
+@pytest.mark.parametrize(
+    "copy",
+    ["Faster in the frozen v2 benchmark.", "More efficient than Graphify.", "Outperformed Graphify."],
+)
+def test_technical_beta_rejects_even_scoped_comparative_claims(copy):
+    scorecard = {"release": "technical_beta", "allowed_claim": "Technical beta."}
+    with pytest.raises(ValueError, match="technical beta"):
+        validate_public_claims(f"<section>{copy}</section>", scorecard)
+
+
 def test_current_sales_page_matches_committed_scorecard():
-    scorecard = json.loads(open("benchmarks/jeviphy-v2/results/scorecard.json").read())
+    scorecard = json.loads(open("benchmarks/jeviphy-beta/scorecard.json").read())
     page = open("docs/jeviphy/index.html").read()
     validate_public_claims(page, scorecard)

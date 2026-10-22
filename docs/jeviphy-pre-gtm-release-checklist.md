@@ -1,4 +1,9 @@
-# Jeviphy pre-GTM release checklist
+# Jeviphy technical beta checklist
+
+## Release decision
+
+Launch as a transparent technical beta. Do not publish a product-advantage claim
+over Graphify. Do not restart the paid product benchmark.
 
 ## Three-minute demonstration
 
@@ -14,18 +19,19 @@ The bare command discovers the Git repository, chooses a likely question, repair
 ## Mechanical release decision
 
 1. **Safety or compatibility fails:** stop the release and return to the failing component.
-2. **Retrieval, usability, and compatibility pass:** limited source-aware beta only.
-3. **Product passes and reproduction is pending:** internal candidate only.
-4. **Every gate passes:** private beta may quote the exact scorecard claim.
+2. **Installation 20/20, zero configuration 30/30, compatibility, and local suite pass:** technical beta.
+3. **Any comparison with Graphify:** blocked from current public materials.
 
-## Evidence required for the final candidate
+## Evidence for the beta
 
-- A sealed 120-pair product report produced by the official SWE-bench evaluator.
-- Twenty clean-install attempts: ten Ubuntu and ten macOS at the exact candidate SHA.
-- A fresh 30-case zero-configuration report when any runner, installer, or Graphify query path changed.
-- Two independent retrieval receipts, including one Linux reviewer.
-- CI, CodeQL, dependency audit, Graphify integrity, and the public-claim checker green on the merged SHA.
+- Twenty clean-install attempts: ten Ubuntu and ten macOS at candidate `a2f7aee0`.
+- Thirty zero-configuration cases at the same candidate, with no interaction.
+- A passing compatibility receipt and 8,601 local tests.
+- CI, CodeQL, dependency audit, and the public-claim checker green on the merged SHA.
 
 ## Current boundary
 
-The frozen v2 retrieval result supports only its source-backed retrieval claim. Product success, final two-OS usability, and independent reproduction remain open. JEV is optional and has no positive claim.
+The v13 product benchmark stopped at 0/60. The eight v11 pairs are diagnostic
+only. Historical retrieval reports remain available for technical inspection,
+but they are not beta claims. JEV is optional, requires separate user approval
+for paid use, and has no positive performance claim.

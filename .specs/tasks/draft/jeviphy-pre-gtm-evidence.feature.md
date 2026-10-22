@@ -5,18 +5,34 @@
 **Date:** 2026-10-20
 **Decision target:** Decide mechanically whether Jeviphy is ready for a narrow beta, a benchmark-backed public launch, or more product work.
 
+## Product decision - 2026-10-21
+
+Jeviphy ships as a transparent technical beta. The release makes no product
+advantage claim over Graphify. The supported public evidence is limited to:
+
+- clean installation: 20/20 attempts passed on Ubuntu and macOS;
+- zero configuration: 30/30 cases completed without interaction;
+- Graphify compatibility: passed for the pinned candidate;
+- local suite: 8,601 tests passed.
+
+The paid product benchmark is closed at 0/60 for v13. The eight v11 pairs are
+diagnostic only and cannot support a public claim. No long benchmark or paid API
+run is required for this beta decision.
+
 ## Current Evidence
 
-- The frozen v2 retrieval gate passed on 120 public tasks and 600 paired measurements.
-- Valid-source precision@5 improved from 4.0% to 24.5%; first hits improved from 4/40 to 40/40.
-- Stale-source losses were 0/20 and no-source outputs were byte-identical in 40/40 controls.
-- The 30-case zero-configuration evaluation passed, but its evidence is not yet incorporated into the unified v2 scorecard.
-- Product-task success, complete two-OS install evidence, and two independent reproductions remain insufficient.
-- The live product runner now uses Docker, but a completed trajectory is not proof that the generated patch passes the official SWE-bench tests.
+- Clean installation passed 20/20 attempts on Ubuntu and macOS.
+- Zero-configuration execution passed 30/30 cases without interaction.
+- The pinned candidate passed its Graphify compatibility receipt.
+- The local suite passed 8,601 tests.
+- Product benchmark v13 stopped at 0/60; the eight v11 pairs remain diagnostic only.
+- Historical retrieval reports remain technical records, not beta claims.
 
-## Product Question
+## Archived product question
 
-Can Jeviphy improve completed coding-task success, or achieve equal success with materially lower time or token use, while preserving Graphify behavior when source-backed memory is absent or stale?
+The stopped benchmark asked whether Jeviphy changed completed coding-task outcomes
+while preserving Graphify behavior. The beta decision does not answer or publish
+a claim from that question.
 
 ## Non-Goals
 
@@ -24,10 +40,10 @@ Can Jeviphy improve completed coding-task success, or achieve equal success with
 - Making JEV or any paid provider mandatory for the default command.
 - Tuning against holdout outcomes after the candidate is frozen.
 - Treating trajectory creation, patch submission, retrieval accuracy, or human preference as task success.
-- Publishing “faster”, “better”, or “more effective” beyond metrics whose gates pass.
+- Publishing a product-advantage claim over Graphify.
 - Attributing an offline source-provenance gain to JEV. JEV remains optional and requires its own positive evidence.
 
-## Evidence Model
+## Stopped product evaluation protocol
 
 ### Arms
 
@@ -49,7 +65,7 @@ A trajectory, `Submitted` status, zero process exit, or plausible diff alone is 
 
 ### Required gates
 
-The existing v2 scorecard thresholds remain frozen:
+The historical v2 scorecard thresholds remain frozen for auditability:
 
 - product success advantage at least 10 percentage points;
 - paired 95% bootstrap lower bound greater than zero;
@@ -58,7 +74,8 @@ The existing v2 scorecard thresholds remain frozen:
 - overall p95 completion time no more than 5% slower;
 - retrieval, usability, compatibility, and reproduction gates also pass.
 
-If product success is equal but efficiency passes, the allowed claim is limited to efficiency. It must not be rewritten as product superiority.
+These thresholds do not authorize a beta claim. The benchmark is stopped and its
+partial records remain diagnostic.
 
 ## Functional Requirements
 
@@ -147,9 +164,9 @@ Two people who did not author the retrieval change must reproduce the frozen ret
 
 Internal automation may validate receipts but may not manufacture independence.
 
-### PG9 — Beta readiness
+### PG9 — Technical beta readiness
 
-A private beta may start when retrieval, usability, and compatibility pass, even if product superiority or reproduction does not. The beta uses 5–10 Graphify or Claude-Mem users and records only:
+A technical beta may start when installation, zero-configuration behavior, compatibility, and the local suite pass. Retrieval comparisons, product superiority, and independent reproduction are not release gates for this decision. The beta records only:
 
 - successful install;
 - time to first useful answer;
@@ -161,16 +178,16 @@ No source code, prompts, memories, or graph contents are collected by default.
 
 ### PG10 — Claim policy
 
-The scorecard emits exactly one allowed claim:
+The beta scorecard permits only factual, non-comparative claims:
 
-| Evidence | Allowed claim |
+| Evidence | Allowed wording |
 | --- | --- |
-| Retrieval only | “Jeviphy improved source-backed retrieval on the frozen v2 benchmark.” |
-| Retrieval + usability + compatibility | “Jeviphy is ready for a limited source-aware beta.” |
-| Product + retrieval + usability + compatibility, reproduction pending | “Jeviphy passed the internal frozen v2 product gates; external reproduction is pending.” |
-| Every gate passes | “Jeviphy surpassed Graphify on the frozen v2 benchmark.” |
+| 20 clean installs | “20 of 20 clean installation attempts passed on Ubuntu and macOS.” |
+| 30 zero-configuration cases | “30 of 30 zero-configuration cases completed without interaction.” |
+| Compatibility receipt | “The pinned candidate passed the Graphify compatibility check.” |
+| Local suite | “8,601 local tests passed.” |
 
-Any failed safety or compatibility gate blocks release. A product benchmark that fails must remain published as a negative result.
+Any failed safety or compatibility gate blocks release. Product benchmark data remains diagnostic and must not be converted into a public comparison.
 
 No page or outreach may claim that JEV caused a measured improvement unless a separately frozen JEV-on versus JEV-off comparison passes its own gate. Until then, describe Jeviphy as source-aware Graphify orchestration with optional JEV enrichment.
 
@@ -237,11 +254,8 @@ Beta records contain participant handle, consent timestamp, version, OS, host, e
 
 ## Definition of Done
 
-- Product records are derived from official SWE-bench evaluation, not trajectories.
-- The frozen run completes remotely with immutable pins and bounded cost.
-- The unified scorecard contains no `insufficient_evidence` gate required for the selected release decision.
-- Twenty clean-install attempts and the 30-case zero-config suite are attached to the candidate SHA.
-- Two valid independent receipts exist before a public superiority claim.
-- At least five external beta participants complete the frozen onboarding protocol before mass GTM.
-- The final report publishes negative and positive outcomes with hashes and exact scope.
+- The beta scorecard publishes installation, zero-configuration, compatibility, and suite evidence with exact scope.
+- The v13 stop receipt records 0/60 and the v11 eight-pair result remains diagnostic only.
+- README, presentation, participant brief, AI context, and public page contain no comparative product claim.
+- The package includes focused questions for Graphify, Claude Mem, and JEV reviewers.
 - One task branch, one PR, required checks, and post-merge CI are green.

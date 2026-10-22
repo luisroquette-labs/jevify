@@ -10,7 +10,10 @@ from pathlib import Path
 from tools.jeviphy_product_score import INTERNAL_PRODUCT_WIN, REPRODUCED_PRODUCT_WIN
 
 
-COMPARATIVE = re.compile(r"\b(faster|better|more effective|surpassed)\b", re.IGNORECASE)
+COMPARATIVE = re.compile(
+    r"\b(faster|better|more effective|more efficient|surpassed|outperformed?)\b",
+    re.IGNORECASE,
+)
 POSITIVE_JEV = re.compile(r"\bjev\b.{0,100}\b(improved|faster|better|more effective|surpassed)\b",
                           re.IGNORECASE | re.DOTALL)
 
@@ -19,6 +22,8 @@ def validate_public_claims(page: str, scorecard: dict) -> None:
     claim = scorecard.get("allowed_claim")
     if not isinstance(claim, str) or not claim:
         raise ValueError("scorecard has no allowed claim")
+    if scorecard.get("release") == "technical_beta" and COMPARATIVE.search(page):
+        raise ValueError("technical beta page cannot contain comparative claims")
     sections = re.findall(r"<section\b[^>]*>.*?</section>", page, flags=re.IGNORECASE | re.DOTALL)
     outside = re.sub(r"<section\b[^>]*>.*?</section>", "", page,
                      flags=re.IGNORECASE | re.DOTALL)

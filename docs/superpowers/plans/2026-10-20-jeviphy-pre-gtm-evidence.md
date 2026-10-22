@@ -4,11 +4,25 @@
 
 **Goal:** Convert Jeviphy's proven retrieval improvement into a mechanically scored product, usability, compatibility, and reproduction decision before any GTM campaign.
 
-**Architecture:** Preserve the frozen v2 retrieval result and Graphify engine. Add the missing bridge from mini-swe-agent predictions to official SWE-bench evaluation, assemble every evidence source into one immutable report, and let the existing scorecard choose the strongest permitted claim. Run expensive work in a GitHub Codespace; keep default Jeviphy offline and local-first.
+**Architecture:** Preserve the frozen v2 retrieval result and Graphify engine. The original plan used remote product evaluation; the closeout decision below supersedes those execution steps. Keep default Jeviphy offline and local-first.
 
-**Tech Stack:** Python 3.10+, pytest, standard library, mini-swe-agent, SWE-bench Docker harness, GitHub Codespaces through `codespace-manager`, GitHub Actions for lightweight checks, existing Graphify and Jeviphy modules.
+**Tech Stack:** Python 3.10+, pytest, standard library, GitHub Actions for lightweight checks, and the existing Graphify and Jeviphy modules. Historical benchmark tooling remains documented below but is not active release work.
 
 **Spec:** `.specs/tasks/draft/jeviphy-pre-gtm-evidence.feature.md`
+
+## Closeout plan - transparent technical beta
+
+The owner ended the paid product benchmark and selected a technical beta. Do not
+restart the benchmark, provision a Codespace, or call a paid API.
+
+- [x] Preserve the stopped v13 state at 0/60.
+- [x] Classify the eight v11 pairs as diagnostic only.
+- [x] Publish the beta scorecard for installation 20/20, zero configuration 30/30, compatibility, and 8,601 local tests.
+- [x] Replace comparative claims in current documentation, presentation, and public page.
+- [ ] Run local gates through `mac-gate`, update PR #32, wait for checks, and integrate.
+
+The historical implementation tasks below document how the evidence tooling was
+built. They are not instructions to resume the stopped benchmark.
 
 ## Global Constraints
 
@@ -43,7 +57,7 @@ Already complete and retained:
 - Docker product runner with cost preflight;
 - CI, CodeQL, Ruff, Bandit, and `pip-audit` gates.
 
-Remaining critical path:
+Historical critical path before the beta closeout:
 
 1. turn generated predictions into officially evaluated product pairs;
 2. run the frozen product arms remotely under an approved provider budget;
@@ -505,22 +519,19 @@ Show automatic repository discovery, question selection, offline Graphify fallba
 - Product also passes, reproduction pending: internal candidate; no public superiority claim.
 - Every benchmark gate passes: the release candidate may enter private beta with the exact reproduced benchmark claim.
 
-- [ ] **Step 4: Run final repository gates**
+- [x] **Step 4: Run final repository gates**
 
-In the task Codespace:
+On the Mac through the shared gate:
 
 ```bash
-uv sync --all-extras --frozen
-uv run --frozen pytest -q
-uv run --frozen ruff check .
-uv run --frozen pip-audit --strict
+~/.local/bin/mac-gate zsh -lc 'uv sync --all-extras --frozen && uv run --frozen ruff check . && uv run --frozen pytest tests/ -q --tb=short && uv run --frozen pip-audit --strict'
 ```
 
-Run `graphify update .` remotely with provider keys unset. The full suite must match the candidate SHA. Do not use a local `next build`; this repository has no Vercel application gate.
+Run `graphify update .` locally with provider keys unset. Do not run a local build; this repository has no Vercel application gate.
 
 - [ ] **Step 5: Push one PR and integrate autonomously**
 
-Push the task branch, open one PR to `jeviphy`, wait for CI and CodeQL on the latest SHA, review the diff, merge, and verify post-merge CI on the merge commit. Stop the clean Codespace afterward and retain it only if evidence needed for reproduction remains there.
+Push the task branch to the existing PR #32, wait for CI and CodeQL on the latest SHA, review the diff, merge, and verify post-merge CI on the merge commit. Do not provision a Codespace.
 
 ### Task 7: Run the Private Beta and Gate Mass GTM
 

@@ -3,19 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Jeviphy helps Claude Code and Codex focus code search by combining Graphify's code graph with source paths from reviewed memory.">
+  <meta name="description" content="Jeviphy is a transparent technical beta combining Graphify's code graph with reviewed memory hints for Claude Code and Codex.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Jeviphy — start code search from reviewed context">
-  <meta property="og:description" content="A Graphify fork that uses reviewed memory to point Claude Code and Codex to the right source files first.">
+  <meta property="og:title" content="Jeviphy — transparent technical beta">
+  <meta property="og:description" content="Graphify code graphs with reviewed memory hints for Claude Code and Codex.">
   <meta property="og:url" content="https://luisroquette-labs.github.io/jeviphy/">
-  <meta property="og:image" content="https://luisroquette-labs.github.io/jeviphy/jeviphy-og.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Jeviphy turns reviewed memory into a focused path through source code.">
-  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:card" content="summary">
   <link rel="canonical" href="https://luisroquette-labs.github.io/jeviphy/">
   <link rel="icon" href="logo.svg" type="image/svg+xml">
-  <title>Jeviphy — start code search from reviewed context</title>
+  <title>Jeviphy — transparent technical beta</title>
   <style>
     :root {
       --ink: #0c1710;
@@ -273,7 +269,7 @@
   </style>
 </head>
 <body>
-  <div class="announcement"><code>jeviphy / local-first</code><span>Built on Graphify · made for Claude Code and Codex</span></div>
+  <div class="announcement"><code>jeviphy / technical beta</code><span>Built on Graphify · made for Claude Code and Codex</span></div>
   <header class="shell">
     <nav aria-label="Primary navigation">
       <a class="brand" href="#top"><img class="brand-mark" src="logo.svg" alt="">Jeviphy / lab build</a>
@@ -289,14 +285,14 @@
   <main id="top">
     <div class="shell hero">
       <div>
-        <span class="eyebrow">Memory-guided code search</span>
-        <h1><span>Find the right code.</span><span>From reviewed context.</span></h1>
-        <p class="hero-copy"><strong>Jeviphy helps Claude Code and Codex stop searching your whole repository.</strong> It uses files already cited in reviewed memory to focus Graphify's code map before your agent answers.</p>
+        <span class="eyebrow">Transparent technical beta</span>
+        <h1><span>Connect the code graph.</span><span>Use reviewed context.</span></h1>
+        <p class="hero-copy"><strong>Jeviphy combines Graphify's code graph with reviewed memory hints.</strong> Claude Code and Codex receive a bounded starting point, then verify the cited source before answering.</p>
         <div class="actions">
           <a class="button" href="#install">Install Jeviphy — free</a>
           <a class="button secondary" href="#what">See how it works</a>
         </div>
-        <div class="works">Local-first <b>No paid model required</b><b>Graphify-powered</b></div>
+        <div class="works">Local-first <b>No paid model required</b><b>Graphify remains the engine</b></div>
       </div>
       <div class="graph-card" aria-label="Abstract source graph connecting cited files to code nodes">
         <svg viewBox="0 0 400 500" role="img" aria-hidden="true">
@@ -313,67 +309,66 @@
 
     <section class="shell plain-language" id="what">
       <span class="kicker">Jeviphy in plain English</span>
-      <p class="one-line">Graphify maps your code. Jeviphy uses what your team already learned to tell your agent <mark>where to look first.</mark></p>
+      <p class="one-line">Graphify maps your code. Jeviphy can use reviewed source paths to give your agent <mark>a bounded place to start.</mark></p>
       <div class="comparison">
         <article>
-          <span class="comparison-tag">Without Jeviphy</span>
-          <div><h3>Your agent searches the whole map.</h3><p>It can inspect many plausible files before reaching the code connected to a past decision.</p></div>
+          <span class="comparison-tag">Structural source</span>
+          <div><h3>Graphify builds and queries the graph.</h3><p>The graph remains the navigation layer and its structure does not absorb memory assertions.</p></div>
         </article>
         <article>
-          <span class="comparison-tag">With Jeviphy</span>
-          <div><h3>Memory points to the right neighborhood.</h3><p>Jeviphy checks those cited files first, keeps the question's best match, and gives the agent a smaller, stronger starting point.</p></div>
+          <span class="comparison-tag">Reviewed context</span>
+          <div><h3>Memory supplies optional source hints.</h3><p>Jeviphy validates cited files and falls back to the original Graphify query when evidence is absent or invalid.</p></div>
         </article>
       </div>
     </section>
 
     <div class="proof" id="proof">
       <div class="shell proof-grid">
-        <div class="stat"><strong>24.5%</strong><span>Jeviphy precision@5<br>vs 4.0% Graphify</span></div>
-        <div class="stat"><strong>40:4</strong><span>first gold-file hits<br>across 40 source cases</span></div>
-        <div class="stat"><strong>600</strong><span>paired measurements<br>across 120 real tasks</span></div>
+        <div class="stat"><strong>20/20</strong><span>clean installs<br>Ubuntu + macOS</span></div>
+        <div class="stat"><strong>30/30</strong><span>zero-configuration cases<br>no interaction</span></div>
+        <div class="stat"><strong>8,601</strong><span>local tests<br>passed</span></div>
       </div>
     </div>
 
     <section class="shell" id="how">
       <div class="section-head">
         <span class="kicker">The workflow</span>
-        <h2>Three steps. No new database.</h2>
+        <h2>Three components with explicit trust boundaries.</h2>
       </div>
       <div class="steps">
         <article class="step"><span class="step-num">01 / Map</span><div><h3>Graphify maps your repository.</h3><p>Your code becomes a local graph of files, functions, calls, and relationships.</p></div></article>
         <article class="step"><span class="step-num">02 / Remember</span><div><h3>Reviewed memory cites the files.</h3><p>Past work records which source files were involved in a decision or fix.</p></div></article>
-        <article class="step"><span class="step-num">03 / Focus</span><div><h3>Jeviphy searches those files first.</h3><p>Claude Code or Codex starts closer to the answer while Graphify remains the engine underneath.</p></div></article>
+        <article class="step"><span class="step-num">03 / Verify</span><div><h3>Jeviphy validates the hints.</h3><p>The agent inspects source before reporting a conclusion. Invalid hints return to the Graphify path.</p></div></article>
       </div>
     </section>
 
     <section class="shell">
-      <div class="section-head"><span class="kicker">Why install it</span><h2>Spend less agent time finding context.</h2></div>
+      <div class="section-head"><span class="kicker">Beta boundary</span><h2>What is included in this release.</h2></div>
       <div class="reasons">
-        <article class="reason"><strong>01</strong><h3>Reach the relevant code sooner.</h3><p>Median source-backed retrieval was 51.98 ms for Jeviphy and 337.85 ms for Graphify in v2.</p></article>
-        <article class="reason"><strong>02</strong><h3>Put more exact targets near the top.</h3><p>Jeviphy reached 24.5% precision@5, compared with 4.0% for the same Graphify engine and frozen questions.</p></article>
-        <article class="reason"><strong>03</strong><h3>Keep the fast path local.</h3><p>The validated mode needs no paid model call. Your graph and selected memory corpus stay on your machine.</p></article>
+        <article class="reason"><strong>01</strong><h3>Local default.</h3><p>The standard workflow needs no paid model call. Private memory corpora stay outside Git.</p></article>
+        <article class="reason"><strong>02</strong><h3>Graphify compatibility.</h3><p>The pinned beta candidate passed its compatibility receipt and preserves the original fallback.</p></article>
+        <article class="reason"><strong>03</strong><h3>Optional JEV.</h3><p>Live relevance decisions require explicit approval, a user-provided account, and bounded cost.</p></article>
       </div>
     </section>
 
     <section class="benchmark">
       <div class="shell">
-        <div class="section-head"><span class="kicker">The proof</span><h2>Jeviphy improved source-backed retrieval on the frozen v2 benchmark.</h2></div>
-        <div class="rows" aria-label="Benchmark comparison">
-          <div class="metric"><span>Precision@5 · Graphify</span><div class="track"><div class="bar" style="width:16%"></div></div><span class="metric-value">4.0%</span></div>
-          <div class="metric"><span>Precision@5 · Jeviphy</span><div class="track"><div class="bar jeviphy" style="width:98%"></div></div><span class="metric-value">24.5%</span></div>
-          <div class="metric"><span>Source p95 · Graphify</span><div class="track"><div class="bar" style="width:100%"></div></div><span class="metric-value">4,170.41 ms</span></div>
-          <div class="metric"><span>Source p95 · Jeviphy</span><div class="track"><div class="bar jeviphy" style="width:4%"></div></div><span class="metric-value">170.47 ms</span></div>
+        <div class="section-head"><span class="kicker">Evidence status</span><h2>The product benchmark is closed for this beta.</h2></div>
+        <div class="rows" aria-label="Evidence status">
+          <div class="metric"><span>Clean installation</span><div class="track"><div class="bar jeviphy" style="width:100%"></div></div><span class="metric-value">20/20</span></div>
+          <div class="metric"><span>Zero configuration</span><div class="track"><div class="bar jeviphy" style="width:100%"></div></div><span class="metric-value">30/30</span></div>
+          <div class="metric"><span>Compatibility</span><div class="track"><div class="bar jeviphy" style="width:100%"></div></div><span class="metric-value">pass</span></div>
+          <div class="metric"><span>Product benchmark v13</span><div class="track"><div class="bar" style="width:0%"></div></div><span class="metric-value">0/60</span></div>
         </div>
-        <div class="legend"><span><i></i>Graphify</span><span><i class="green"></i>Jeviphy fast-source</span></div>
-        <div class="method">120 frozen public SWE-bench Multilingual tasks · 38 repositories · 9 languages · 40 source-cited cases · 20 stale cases · 40 byte-identical controls · 5 passes · 600 paired measurements · 10,000 bootstrap resamples · Python 3.13.12 · <a href="../jeviphy-v2-evaluation.md">full method, hashes, failures, and limits →</a></div>
+        <div class="method">The eight v11 pairs are diagnostic only. No product comparison is part of the beta claim. Read the <a href="../jeviphy-beta-evidence.md">evidence package, hashes, and limits →</a></div>
       </div>
     </section>
 
     <section class="shell">
-      <div class="section-head"><span class="kicker">No hidden fine print</span><h2>What worked—and what did not.</h2></div>
+      <div class="section-head"><span class="kicker">Review package</span><h2>Three focused requests for maintainers.</h2></div>
       <div class="honesty">
-        <div><h3>Frozen retrieval passed.</h3><p>Jeviphy improved precision@5 and first gold-file hits, with zero stale-source losses and byte-identical no-source controls. Product-task success and external reproduction are still unproven.</p></div>
-        <div><h3>Paid Jev did not.</h3><p>In a separate 19-call pilot, Jev left top-five hits unchanged at 4/19 and added network latency. It remains optional, off by default, and outside every speed claim here.</p></div>
+        <div><h3>Graphify + Claude Mem</h3><p>Review graph semantics, exact fallback behavior, the optional <code>source_paths</code> contract, and the privacy boundary.</p></div>
+        <div><h3>JEV + independent evaluators</h3><p>Review the opt-in decision interface and frozen evaluation protocol. Diagnostic runs do not support a public product claim.</p></div>
       </div>
     </section>
 
@@ -383,7 +378,7 @@
           <span class="kicker">Claude Code + Codex</span>
           <h2>Install it in two commands.</h2>
           <p>Clone Jeviphy, run its receipt-based installer, and ask a question inside a repository with a current Graphify graph.</p>
-          <p class="small">No paid model is required for <span class="mono">fast-source</span>. Keep private memory corpora outside Git.</p>
+          <p class="small">No paid model is required for the default workflow. Keep private memory corpora outside Git.</p>
         </div>
         <pre aria-label="Installation commands"><code><span class="prompt">$</span> git clone https://github.com/luisroquette-labs/jeviphy.git
 <span class="prompt">$</span> python jeviphy/scripts/install_jeviphy_skill.py install --host both
@@ -398,7 +393,7 @@ $jeviphy investigate this repository
   </main>
 
   <footer>
-    <div class="shell footer-grid"><span>Jeviphy is built on Graphify</span><span>Apache-2.0 · evidence dated 2026-10-19</span></div>
+    <div class="shell footer-grid"><span>Jeviphy is built on Graphify</span><span>Technical beta · evidence dated 2026-10-21</span></div>
   </footer>
 </body>
 </html>
