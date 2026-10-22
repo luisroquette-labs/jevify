@@ -78,7 +78,11 @@ def normalize_question(text: str) -> str:
         cursor = match.end()
     output += text[cursor:]
     output = re.sub(r"\s{2,}", " ", output)
-    return re.sub(r"\s+([?,.])", r"\1", output).strip()
+    output = re.sub(r"\s+([?,.])", r"\1", output).strip()
+    labels = list(re.finditer(r"`[^`]+`", output))
+    if len(labels) > 5:
+        output = output[:labels[4].end()].rstrip(", ") + " and other communities?"
+    return output
 
 
 def _rank_questions(raw: list[dict], gods: list[dict], connections: list[dict]) -> tuple[SuggestedQuestion, ...]:

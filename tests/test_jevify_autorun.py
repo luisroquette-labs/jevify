@@ -331,6 +331,14 @@ def test_question_text_deduplicates_repeated_labels(repo_with_graph, monkeypatch
     assert "  " not in text
 
 
+def test_question_text_caps_long_bridge_lists():
+    text = insights.normalize_question(
+        "Why does `A` connect `B` to `C`, `D`, `E`, `F`, `G`?"
+    )
+
+    assert text == "Why does `A` connect `B` to `C`, `D`, `E` and other communities?"
+
+
 def test_update_only_does_not_call_graph_query(repo_with_graph, monkeypatch):
     repo, graph = repo_with_graph
     _write_graph_artifacts(repo, graph)
