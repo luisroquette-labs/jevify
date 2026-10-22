@@ -19,6 +19,7 @@
       --paper-2: #dff9e7;
       --acid: #94f1a9;
       --orange: #ff6858;
+      --orange-text: #b72f23;
       --muted: #53645a;
       --line: rgba(12, 23, 16, .2);
       --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
@@ -42,7 +43,7 @@
     }
 
     a { color: inherit; }
-    a:focus-visible, button:focus-visible { outline: 3px solid var(--orange); outline-offset: 4px; }
+    a:focus-visible, button:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
     .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
     .mono { font-family: var(--mono); }
 
@@ -203,7 +204,7 @@
 
     .reasons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
     .reason { min-height: 260px; padding: 28px; border: 1px solid var(--ink); background: rgba(255,255,255,.62); }
-    .reason strong { display: block; margin-bottom: 62px; color: var(--orange); font: 700 13px/1 var(--mono); }
+    .reason strong { display: block; margin-bottom: 62px; color: var(--orange-text); font: 700 13px/1 var(--mono); }
     .reason h3 { margin: 0 0 12px; font-size: 28px; line-height: 1.05; }
     .reason p { margin: 0; color: var(--muted); }
 
@@ -294,7 +295,7 @@
         </div>
         <div class="works">Local-first <b>No paid model required</b><b>Graphify remains the engine</b></div>
       </div>
-      <div class="graph-card" aria-label="Abstract source graph connecting cited files to code nodes">
+      <div class="graph-card" role="img" aria-label="Abstract source graph connecting cited files to code nodes">
         <svg viewBox="0 0 400 500" role="img" aria-hidden="true">
           <g>
             <line x1="62" y1="70" x2="185" y2="130"/><line x1="185" y1="130" x2="320" y2="78"/><line x1="185" y1="130" x2="118" y2="244"/><line x1="185" y1="130" x2="285" y2="242"/><line x1="118" y1="244" x2="70" y2="375"/><line x1="118" y1="244" x2="210" y2="347"/><line x1="285" y1="242" x2="210" y2="347"/><line x1="285" y1="242" x2="345" y2="390"/><line x1="210" y1="347" x2="152" y2="450"/><line x1="210" y1="347" x2="345" y2="390"/>
@@ -326,7 +327,7 @@
       <div class="shell proof-grid">
         <div class="stat"><strong>20/20</strong><span>clean installs<br>Ubuntu + macOS</span></div>
         <div class="stat"><strong>30/30</strong><span>zero-configuration cases<br>no interaction</span></div>
-        <div class="stat"><strong>8,644</strong><span>local tests<br>passed</span></div>
+        <div class="stat"><strong>8,647</strong><span>local tests<br>passed</span></div>
       </div>
     </div>
 

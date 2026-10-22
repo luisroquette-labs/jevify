@@ -78,6 +78,10 @@ def _fixture(path: Path) -> Path:
         kind="both",
         root=path,
     )
+    (graph_path.parent / "GRAPH_REPORT.md").write_text(
+        "## Summary\n- 1 nodes · 0 edges · 1 communities\n", encoding="utf-8",
+    )
+    (graph_path.parent / "graph.html").write_text("current", encoding="utf-8")
     return graph_path
 
 

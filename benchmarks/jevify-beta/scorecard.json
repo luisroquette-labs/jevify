@@ -2,13 +2,13 @@
   "schema_version": 1,
   "release": "technical_beta",
   "allowed_claim": "Jevify is available as a transparent technical beta.",
-  "candidate": "a2f7aee09e2a768c295a9a163c1ceff325e8d40d",
+  "candidate": "1132abd00b67d25896d5a04fdd6b551866c3ff00",
   "gates": {
     "installation": {"attempts": 20, "successes": 20, "status": "pass"},
     "zero_configuration": {"attempts": 30, "successes": 30, "interaction_required": 0, "status": "pass"},
     "compatibility": {"graphify_compatible": true, "status": "pass"},
     "bounded_update_acceptance": {"cases": 3, "successes": 3, "paid_requests": 0, "status": "pass"},
-    "local_suite": {"passed": 8644, "skipped": 15, "status": "pass"}
+    "local_suite": {"passed": 8647, "skipped": 15, "status": "pass"}
   },
   "product_benchmark": {
     "v13": {"completed_pairs": 0, "planned_pairs": 60, "status": "stopped"},

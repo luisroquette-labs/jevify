@@ -38,6 +38,13 @@ focused regression test before the three outputs were reviewed again. The
 final questions were 84–138 characters at most across the public fixtures and
 120 characters at most in CleanMyMac.
 
+An exhaustive post-integration audit found and fixed three acceptance gaps:
+local and already-current routes now reject blocking Graphify health findings,
+already-current results require the report and visualization, and failed
+updates restore the complete verified artifact set instead of only
+`graph.json`. Regression coverage pins all three behaviors. The audit suite
+finished with 8,647 tests passed and 15 skipped.
+
 ## Boundaries and caveats
 
 - Axios was intentionally restricted to a code-only corpus; two sensitive test

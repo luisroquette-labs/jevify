@@ -15,7 +15,7 @@ JEV remains optional.
 | Zero configuration | 30/30 with no interaction | `a2f7aee0` |
 | Graphify compatibility | pass | `a2f7aee0` |
 | Bounded update acceptance | 3/3 offline cases | `1132abd0` |
-| Local suite | 8,644 tests passed; 15 skipped | amplification checkpoint |
+| Local suite | 8,647 tests passed; 15 skipped | exhaustive audit checkpoint |
 
 GitHub CI later ran 8,602 tests per supported Python interpreter on the PR SHA.
 The public [machine-readable scorecard](../benchmarks/jevify-beta/scorecard.json)
