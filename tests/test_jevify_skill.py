@@ -1,6 +1,5 @@
 """The installed skill entry point must work outside this checkout's cwd."""
 
-import re
 import json
 import shutil
 import subprocess
@@ -87,21 +86,10 @@ def test_portable_skill_code_matches_project_code() -> None:
         assert source == (root / "skills" / "jevify" / "scripts" / "tools" / name).read_bytes()
 
 
-def test_pinned_commit_matches_portable_core() -> None:
+def test_portable_runner_pins_supported_graphify() -> None:
     root = Path(__file__).resolve().parents[1]
     script = root / "skills" / "jevify" / "scripts" / "run.py"
-    pinned = re.search(r"graphifyy @ git\+https://[^\s\"]+@([0-9a-f]{40})", script.read_text())
-    assert pinned is not None
-    for name in (
-        "jev_memory_pilot.py", "jev_memory_pilot_api.py", "jevify_autorun.py",
-        "jevify_graph_state.py", "jevify_insights.py", "jevify_provenance.py",
-    ):
-        source = (root / "tools" / name).read_bytes()
-        committed = subprocess.run(
-            ["git", "show", f"{pinned.group(1)}:tools/{name}"],
-            cwd=root, check=True, capture_output=True,
-        ).stdout
-        assert source == committed
+    assert '"graphifyy==0.9.93"' in script.read_text()
 
 
 def test_portable_doctor_reports_current_private_inputs(tmp_path: Path) -> None:

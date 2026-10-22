@@ -193,7 +193,7 @@ def build_insights(graph: nx.Graph, graph_path: Path) -> InsightBundle:
 
 
 def query_result(answer: str) -> QueryResult:
-    truncated = answer.lstrip().startswith("[!] TRUNCATED:")
+    truncated = "[!] TRUNCATED:" in answer
     narrowing = (
         "Narrow with graphify path, graphify explain, or context_filter."
         if truncated else None

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import re
@@ -69,6 +70,13 @@ BACKUP_ARTIFACTS = (
     "cost.json",
 )
 MISSING_GRAPH_MARKER = ".jevify-missing-graph"
+
+
+def _read_query_graph(graph_path: Path) -> nx.Graph:
+    """Load query graphs across Graphify 0.9.92 and 0.9.93."""
+    if "query_mode" in inspect.signature(_read_graph).parameters:
+        return _read_graph(str(graph_path), query_mode=True)
+    return _read_graph(str(graph_path))
 
 
 class ContextError(ValueError):
@@ -182,7 +190,7 @@ def inspect_context(
         raw = json.loads(resolved_graph.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             raise ValueError("graph root is not an object")
-        loaded = _read_graph(str(resolved_graph), query_mode=True)
+        loaded = _read_query_graph(resolved_graph)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return ContextState("corrupt", context, freshness, diagnostic=str(exc))
     persisted = raw.get("built_at_commit")
@@ -202,7 +210,7 @@ def inspect_context(
 
 
 def graph_stats(graph_path: Path) -> GraphStats:
-    graph = _read_graph(str(graph_path), query_mode=True)
+    graph = _read_query_graph(graph_path)
     communities = {
         data.get("community")
         for _, data in graph.nodes(data=True)
@@ -702,7 +710,7 @@ def auto(argv: list[str], cwd: Path) -> int:
             raise ContextError("semantic update requires the Graphify host workflow")
         raise ContextError(f"graph update blocked: {receipt.diagnostic}")
     context = inspect_context(cwd, repo=args.repo, graph=args.graph).context
-    graph = _read_graph(str(context.graph), query_mode=True)
+    graph = _read_query_graph(context.graph)
     if graph is None:
         raise ContextError("graph could not be loaded")
     corpus_identity = None
