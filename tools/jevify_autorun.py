@@ -55,6 +55,20 @@ BLOCKING_HEALTH_KEYS = (
     "undirected_same_endpoint_collapsed_edges",
 )
 
+BACKUP_ARTIFACTS = (
+    "graph.json",
+    "manifest.json",
+    "GRAPH_REPORT.md",
+    "graph.html",
+    ".graph.html.stale",
+    ".graphify_labels.json",
+    ".graphify_analysis.json",
+    ".graphify_semantic_marker",
+    ".graphify_root",
+    "cost.json",
+)
+MISSING_GRAPH_MARKER = ".jevify-missing-graph"
+
 
 class ContextError(ValueError):
     """The current repository cannot produce a valid invocation context."""
@@ -250,20 +264,27 @@ def _child_environment() -> dict[str, str]:
 
 
 def _private_backup(graph_path: Path) -> Path | None:
-    if not graph_path.is_file():
-        return None
     directory = Path(tempfile.mkdtemp(prefix="jevify-graph-backup-"))
     directory.chmod(0o700)
     backup = directory / "graph.json"
-    shutil.copyfile(graph_path, backup)
-    backup.chmod(0o600)
+    for name in BACKUP_ARTIFACTS:
+        source = graph_path.parent / name
+        if source.is_file():
+            destination = directory / name
+            shutil.copyfile(source, destination)
+            destination.chmod(0o600)
+    if not backup.is_file():
+        backup.touch(mode=0o600)
+        marker = directory / MISSING_GRAPH_MARKER
+        marker.touch(mode=0o600)
     return backup
 
 
 def _discard_backup(backup: Path | None) -> None:
     if backup is None:
         return
-    backup.unlink(missing_ok=True)
+    for name in (*BACKUP_ARTIFACTS, MISSING_GRAPH_MARKER):
+        (backup.parent / name).unlink(missing_ok=True)
     backup.parent.rmdir()
 
 
@@ -272,8 +293,24 @@ def _restore_backup(backup: Path | None, graph_path: Path) -> None:
         graph_path.unlink(missing_ok=True)
         return
     graph_path.parent.mkdir(parents=True, exist_ok=True)
-    os.replace(backup, graph_path)
+    missing_graph = (backup.parent / MISSING_GRAPH_MARKER).is_file()
+    for name in BACKUP_ARTIFACTS:
+        saved = backup.parent / name
+        target = graph_path.parent / name
+        if name == "graph.json" and missing_graph:
+            target.unlink(missing_ok=True)
+            saved.unlink(missing_ok=True)
+        elif saved.is_file():
+            os.replace(saved, target)
+        else:
+            target.unlink(missing_ok=True)
+    (backup.parent / MISSING_GRAPH_MARKER).unlink(missing_ok=True)
     backup.parent.rmdir()
+
+
+def _blocking_health(health: Mapping[str, int]) -> dict[str, int]:
+    return {key: int(health.get(key, 0) or 0)
+            for key in BLOCKING_HEALTH_KEYS if health.get(key, 0)}
 
 
 def _artifact_validation(
@@ -380,6 +417,14 @@ def run_code_update(
             "blocked", route, before, after, state.freshness, inspected.freshness,
             str(exc)[:4096], report_path=report_path,
         )
+    blockers = _blocking_health(insights.health)
+    if blockers:
+        _restore_backup(backup, graph_path)
+        return UpdateReceipt(
+            "blocked", route, before, after, state.freshness, inspected.freshness,
+            f"blocking Graphify health counts: {blockers}",
+            report_path=report_path, health=insights.health,
+        )
     _discard_backup(backup)
     return UpdateReceipt(
         "updated", route, before, after, state.freshness, inspected.freshness,
@@ -404,10 +449,10 @@ def run_update(
     route = plan_update(state)
     before = _safe_graph_stats(state.context.graph)
     if route.kind == "none":
-        if state.loaded_graph is None:
+        if state.loaded_graph is None or before is None:
             return UpdateReceipt(
                 "blocked", route, before, None, state.freshness, None,
-                "current graph could not be loaded",
+                "current graph could not be loaded or measured",
             )
         try:
             insights = build_insights(state.loaded_graph, state.context.graph)
@@ -416,10 +461,30 @@ def run_update(
                 "blocked", route, before, None, state.freshness, None,
                 str(exc)[:4096],
             )
+        blockers = _blocking_health(insights.health)
+        if blockers:
+            return UpdateReceipt(
+                "blocked", route, before, before, state.freshness, state.freshness,
+                f"blocking Graphify health counts: {blockers}",
+                health=insights.health,
+            )
+        artifacts_ok, diagnostic, report_path, visualization = _artifact_validation(
+            state.context.graph,
+            before,
+            env=_child_environment(),
+            html_before=(state.context.graph.parent / "graph.html").read_bytes()
+            if (state.context.graph.parent / "graph.html").is_file() else None,
+        )
+        if not artifacts_ok:
+            return UpdateReceipt(
+                "blocked", route, before, before, state.freshness, state.freshness,
+                diagnostic, report_path=report_path, visualization=visualization,
+                health=insights.health,
+            )
         return UpdateReceipt(
             "already_current", route, before, before,
             state.freshness, state.freshness,
-            insights=insights,
+            report_path=report_path, visualization=visualization, insights=insights,
         )
     if route.kind == "blocked":
         return UpdateReceipt(
@@ -498,7 +563,7 @@ def finalize_update(
     health = {key: int(summary.get(key, 0) or 0) for key in health_keys}
     if not artifacts_ok:
         return blocked(diagnostic, health)
-    blockers = {key: health[key] for key in BLOCKING_HEALTH_KEYS if health[key]}
+    blockers = _blocking_health(health)
     if blockers:
         return blocked(f"blocking Graphify health counts: {blockers}", health)
     if state.loaded_graph is None:

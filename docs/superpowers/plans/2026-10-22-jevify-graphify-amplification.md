@@ -1,5 +1,7 @@
 # Jevify Graphify Amplification Implementation Plan
 
+**Status:** Completed and independently re-audited on 2026-10-22.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `$jevify --update` execute or orchestrate the complete applicable Graphify workflow, prove the resulting graph is current, and return a concise actionable insight bundle without relying on paid JEV.
@@ -68,7 +70,7 @@
 - Consumes: `repo: Path`, `graph_path: Path`, `head: str`.
 - Produces: `GraphFreshness`, `inspect_graph_freshness(...) -> GraphFreshness`, and an enriched `ContextState` whose `status == "ready"` only when commit and manifest checks pass.
 
-- [ ] **Step 1: Write failing same-HEAD manifest tests**
+- [x] **Step 1: Write failing same-HEAD manifest tests**
 
 Add these fixtures and tests to `tests/test_jevify_autorun.py`:
 
@@ -106,7 +108,7 @@ def test_same_head_with_deleted_file_is_stale(repo_with_graph):
     assert freshness.deleted_by_type == (("code", 1),)
 ```
 
-- [ ] **Step 2: Run the tests and verify the false-ready regression**
+- [x] **Step 2: Run the tests and verify the false-ready regression**
 
 Run:
 
@@ -119,7 +121,7 @@ mac-gate uv run --frozen pytest \
 
 Expected: FAIL because current `inspect_context()` returns `ready` whenever `built_at_commit` equals `HEAD`.
 
-- [ ] **Step 3: Add immutable freshness types**
+- [x] **Step 3: Add immutable freshness types**
 
 Create both copies of `jevify_graph_state.py` with this public shape:
 
@@ -148,7 +150,7 @@ class GraphFreshness:
 
 Keep the result immutable and JSON-safe through a separate `asdict()` call in the CLI; do not put full file contents or memory observations in it.
 
-- [ ] **Step 4: Implement manifest-aware inspection using Graphify's detector**
+- [x] **Step 4: Implement manifest-aware inspection using Graphify's detector**
 
 Implement:
 
@@ -190,7 +192,7 @@ def inspect_graph_freshness(repo: Path, graph_path: Path) -> GraphFreshness:
 
 Import `Counter`, `classify_file`, `detect_incremental`, `_read_build_excludes`, and `_read_build_gitignore` at module scope so tests can replace the detector without touching Graphify internals. Use a temporary cache so `doctor` remains read-only with respect to the target repository. Catch only `OSError`, `ValueError`, and `json.JSONDecodeError`; return `unavailable` with the exact bounded diagnostic instead of treating detector failure as current.
 
-- [ ] **Step 5: Gate `ready` on both commit and manifest state**
+- [x] **Step 5: Gate `ready` on both commit and manifest state**
 
 Add `freshness: GraphFreshness` immediately after `context` in `ContextState`, before the optional loaded graph and diagnostic fields. In `inspect_context()`, call `inspect_graph_freshness()` immediately after resolving the repository, graph path, and `HEAD`, so missing and corrupt graphs still carry the detected corpus types. Preserve the existing missing/corrupt/commit checks. Return `stale` whenever an otherwise valid graph has freshness other than `current`.
 
@@ -210,7 +212,7 @@ Change `doctor` JSON to include:
 }
 ```
 
-- [ ] **Step 6: Add no-mutation and sensitive-file tests**
+- [x] **Step 6: Add no-mutation and sensitive-file tests**
 
 ```python
 def test_doctor_freshness_scan_does_not_mutate_repo(repo_with_graph):
@@ -240,7 +242,7 @@ def test_malformed_manifest_is_unavailable_not_current(repo_with_graph):
     assert inspect_graph_freshness(repo, graph).status == "unavailable"
 ```
 
-- [ ] **Step 7: Run focused checks and commit**
+- [x] **Step 7: Run focused checks and commit**
 
 ```bash
 mac-gate uv run --frozen pytest tests/test_jevify_autorun.py tests/test_jevify_skill.py -q
@@ -273,7 +275,7 @@ git commit -m "fix: verify Jevify graph freshness from the manifest"
 - Consumes: `ContextState`, the resolved graph path, and a sanitized child environment.
 - Produces: `UpdateRoute`, `UpdateReceipt`, `plan_update(state) -> UpdateRoute`, and `run_code_update(route, graph_path, env) -> UpdateReceipt`.
 
-- [ ] **Step 1: Write failing route-selection tests**
+- [x] **Step 1: Write failing route-selection tests**
 
 ```python
 @pytest.mark.parametrize(
@@ -331,13 +333,13 @@ def test_unavailable_freshness_is_blocked(stale_state):
 
 Jevify does not expose or forward a user-supplied Graphify `--force`; a shrink refusal remains a typed `blocked` result requiring a separate, explicit Graphify decision. The sole internal `--force` below replaces an unreadable corrupt file only after preserving its bytes.
 
-- [ ] **Step 2: Run tests and verify missing update types**
+- [x] **Step 2: Run tests and verify missing update types**
 
 Run `mac-gate uv run --frozen pytest tests/test_jevify_autorun.py -q`.
 
 Expected: FAIL because `UpdateRoute` and `plan_update` do not exist.
 
-- [ ] **Step 3: Add the update types**
+- [x] **Step 3: Add the update types**
 
 ```python
 @dataclass(frozen=True)
@@ -371,7 +373,7 @@ class UpdateReceipt:
 
 For a corrupt graph, `run_update()` creates a mode-`0600` copy under a mode-`0700` directory returned by `tempfile.mkdtemp(prefix="jevify-graph-backup-")`. Store its absolute path in `backup_path`. Local routes restore and delete it inside the same process on failure; host routes keep it only until `finalize` accepts or restores the replacement.
 
-- [ ] **Step 4: Implement the deterministic local Graphify route**
+- [x] **Step 4: Implement the deterministic local Graphify route**
 
 For code-only pending work, call one argument-array subprocess from the repository:
 
@@ -396,7 +398,7 @@ env.update(
 
 Capture stdout/stderr, cap the stored diagnostic at 4 KiB, never use `shell=True`, and never retry.
 
-- [ ] **Step 5: Reinspect after the child exits**
+- [x] **Step 5: Reinspect after the child exits**
 
 Return `updated` only when all conditions hold:
 
@@ -412,7 +414,7 @@ assert accepted is True
 
 Also require `GRAPH_REPORT.md` to exist and contain the accepted node and edge counts using Graphify's existing report format. Set `visualization=skipped` only when the frozen child environment has `GRAPHIFY_VIZ_NODE_LIMIT=0`; otherwise require `graph.html` to exist and `.graph.html.stale` to be absent, reporting `updated` when its hash changed and `unchanged` when Graphify kept a still-valid visualization. Otherwise return `blocked` and preserve the Graphify diagnostic. Add tests for exit nonzero, exit zero with pending work, wrong commit, malformed replacement, missing/mismatched report, stale/missing visualization, and unexpected shrink refusal.
 
-- [ ] **Step 6: Add `update` routing to the portable CLI**
+- [x] **Step 6: Add `update` routing to the portable CLI**
 
 `run.py update [--repo PATH] [--graph PATH] [--json]` must:
 
@@ -422,7 +424,7 @@ Also require `GRAPH_REPORT.md` to exist and contain the accepted node and edge c
 
 Keep `auto`, `doctor`, `query`, and `benchmark` compatible. Do not treat exit `20` as an error in the installed skill; it is a typed host handoff.
 
-- [ ] **Step 7: Run focused checks and commit**
+- [x] **Step 7: Run focused checks and commit**
 
 ```bash
 mac-gate uv run --frozen pytest tests/test_jevify_autorun.py tests/test_jevify_skill.py -q
@@ -450,7 +452,7 @@ git commit -m "feat: add fail-closed Jevify graph updates"
 - Consumes: update JSON with `status=requires_host` and `pending_before.requires_semantic_host=true`.
 - Produces: one host-level Graphify update followed by `run.py finalize --repo PATH --json`, with no user interaction; finalization returns verified freshness and health, while Task 4 adds insights.
 
-- [ ] **Step 1: Add failing installed-contract tests**
+- [x] **Step 1: Add failing installed-contract tests**
 
 Assert the generated Claude and Codex skills contain all of these literal requirements:
 
@@ -467,7 +469,7 @@ required = [
 
 Add a clean-home process test where a mixed fixture returns `requires_host` with exit `20` and does not modify `graph.json` before host orchestration.
 
-- [ ] **Step 2: Run tests and verify the contract is absent**
+- [x] **Step 2: Run tests and verify the contract is absent**
 
 ```bash
 mac-gate uv run --frozen pytest tests/test_jevify_skill.py tests/test_jevify_install.py -q
@@ -475,7 +477,7 @@ mac-gate uv run --frozen pytest tests/test_jevify_skill.py tests/test_jevify_ins
 
 Expected: FAIL on the missing update/handoff wording and exit contract.
 
-- [ ] **Step 3: Replace the ambiguous repair paragraph in `SKILL.md`**
+- [x] **Step 3: Replace the ambiguous repair paragraph in `SKILL.md`**
 
 Document this exact host flow:
 
@@ -495,7 +497,7 @@ Document this exact host flow:
 
 The host must not ask the user for a repository, provider key, question, mode, or permission to continue. Existing cost guardrails still prohibit paid providers.
 
-- [ ] **Step 4: Implement `finalize` as verification, not repair**
+- [x] **Step 4: Implement `finalize` as verification, not repair**
 
 `finalize` must never run Graphify. It calls `inspect_context` and `diagnose_file`, verifies the report counts, and rejects a missing or stale-marked `graph.html` unless `GRAPHIFY_VIZ_NODE_LIMIT=0`; then it returns a verification receipt. It returns exit `1` unless freshness is current, artifacts are acceptable, and no blocking health count is nonzero. Task 4 extends the successful receipt with insights after `jevify_insights.py` exists.
 
@@ -512,7 +514,7 @@ BLOCKING_HEALTH_KEYS = (
 
 Self-loops, relation variants, syntax warnings, sensitive skips, and unverified semantic nodes remain visible caveats but do not silently become blockers.
 
-- [ ] **Step 5: Add failure-preservation tests**
+- [x] **Step 5: Add failure-preservation tests**
 
 ```python
 @pytest.mark.parametrize("diagnostic", [
@@ -554,7 +556,7 @@ def test_corrupt_semantic_handoff_restores_exact_graph_bytes(
 
 Implement `write_private_backup()` in the test fixture with mode `0600`; production backup paths live under a mode-`0700` temporary directory outside Git and are deleted after either restoration or accepted finalization.
 
-- [ ] **Step 6: Audit canonical and installed host artifacts**
+- [x] **Step 6: Audit canonical and installed host artifacts**
 
 ```bash
 mac-gate uv run --frozen pytest \
@@ -564,7 +566,7 @@ mac-gate uv run --frozen pytest \
 
 Expected: canonical project modules match the portable Jevify modules, and clean-home Claude/Codex installs contain the same semantic handoff contract.
 
-- [ ] **Step 7: Run focused checks and commit**
+- [x] **Step 7: Run focused checks and commit**
 
 ```bash
 mac-gate uv run --frozen pytest tests/test_jevify_skill.py tests/test_jevify_install.py -q
@@ -591,7 +593,7 @@ git commit -m "feat: route Jevify semantic updates through Graphify"
 - Consumes: accepted `graph.json`, optional explicit user question.
 - Produces: `InsightBundle`, `build_insights(graph, graph_path) -> InsightBundle`, schema-v2 JSON fields, and the successful `finalize` extension consumed by Task 3's host flow.
 
-- [ ] **Step 1: Write failing question-quality tests**
+- [x] **Step 1: Write failing question-quality tests**
 
 ```python
 def test_insights_return_three_to_five_diversified_questions(cleanmymac_graph):
@@ -629,13 +631,13 @@ def test_update_only_does_not_call_graph_query(
     assert receipt.insights.questions
 ```
 
-- [ ] **Step 2: Run tests and confirm the current raw-question behavior**
+- [x] **Step 2: Run tests and confirm the current raw-question behavior**
 
 Run `mac-gate uv run --frozen pytest tests/test_jevify_autorun.py -q`.
 
 Expected: FAIL because the insight types and label normalization do not exist.
 
-- [ ] **Step 3: Add focused insight types**
+- [x] **Step 3: Add focused insight types**
 
 ```python
 @dataclass(frozen=True)
@@ -657,13 +659,13 @@ class InsightBundle:
 
 Use Graphify's existing `god_nodes`, `surprising_connections`, `suggest_questions`, `_communities_from_graph`, and `diagnose_file`; never recreate graph analysis.
 
-- [ ] **Step 4: Normalize and rank Graphify questions at the Jevify boundary**
+- [x] **Step 4: Normalize and rank Graphify questions at the Jevify boundary**
 
 Implement `normalize_question()` to preserve backticked labels in first-seen order and remove repeated label arguments. Rank non-low-confidence bridge questions first, then inferred God Node questions, isolated-node questions, and ambiguous-edge hints. Diversify round-robin by type and cap at five.
 
 Do not modify `graphify/analyze.py` in this task. If the normalized output is broadly useful upstream, capture it as a separate future Graphify proposal after Jevify proves the behavior.
 
-- [ ] **Step 5: Add truncation-aware explicit queries**
+- [x] **Step 5: Add truncation-aware explicit queries**
 
 Keep explicit questions on `query_graphify_exact`. Add a response status:
 
@@ -677,11 +679,11 @@ class QueryResult:
 
 Detect Graphify's structured truncation marker from the query result. When truncated, label the answer incomplete and recommend the existing `path`, `explain`, or `context_filter` seam; do not increase the budget automatically.
 
-- [ ] **Step 6: Extend JSON without hiding existing fields**
+- [x] **Step 6: Extend JSON without hiding existing fields**
 
 Set `schema_version=2`. Keep `repo`, `graph`, `question`, `mode`, `live_enrichment`, and `answer`. Add `freshness`, `update`, `graph_stats`, `health`, `god_nodes`, `connections`, and `questions`. For update-only results, use JSON `null` for `question` and `answer`.
 
-- [ ] **Step 7: Add human rendering tests**
+- [x] **Step 7: Add human rendering tests**
 
 Pin this section order:
 
@@ -697,7 +699,7 @@ Memory / JEV
 
 Assert a five-question output fits within 140 lines, contains no raw 200-node traversal, and discloses every nonzero caveat.
 
-- [ ] **Step 8: Run focused checks and commit**
+- [x] **Step 8: Run focused checks and commit**
 
 ```bash
 mac-gate uv run --frozen pytest tests/test_jevify_autorun.py tests/test_jevify_skill.py -q
@@ -725,7 +727,7 @@ git commit -m "feat: surface actionable Jevify graph insights"
 - Consumes: canonical project modules and current merged candidate SHA.
 - Produces: receipt-owned Claude/Codex installations with identical update behavior and unchanged Graphify structural output.
 
-- [ ] **Step 1: Add portable-copy parity tests**
+- [x] **Step 1: Add portable-copy parity tests**
 
 Compare these exact file pairs byte-for-byte:
 
@@ -739,7 +741,7 @@ PORTABLE_MODULES = (
 
 Add a test that the PEP 723 dependency in `skills/jevify/scripts/run.py` points to the implementation candidate commit used by the installer evidence, not the pre-amplification commit.
 
-- [ ] **Step 2: Add clean-home update tests**
+- [x] **Step 2: Add clean-home update tests**
 
 For both Claude and Codex temporary homes:
 
@@ -753,7 +755,7 @@ For both Claude and Codex temporary homes:
 
 Provider variables must contain sentinel values in the parent test and be absent from the Graphify child.
 
-- [ ] **Step 3: Preserve graph invariance**
+- [x] **Step 3: Preserve graph invariance**
 
 Run the same fixture through direct Graphify code-only update and Jevify code-only update. Canonicalize only volatile metadata and assert identical node and edge multisets:
 
@@ -763,7 +765,7 @@ assert canonical_graph(jevify_graph) == canonical_graph(graphify_graph)
 
 Do not exempt missing nodes, edges, confidence, direction, `source_file`, or community membership.
 
-- [ ] **Step 4: Run compatibility checks and commit**
+- [x] **Step 4: Run compatibility checks and commit**
 
 ```bash
 mac-gate uv run --frozen pytest \
@@ -791,7 +793,7 @@ git commit -m "test: prove portable Jevify update compatibility"
 - Consumes: tested candidate SHA, one CleanMyMac reproduction, one code-only fixture, one mixed public fixture.
 - Produces: immutable local evidence receipt and public claims limited to verified update parity and actionable output.
 
-- [ ] **Step 1: Freeze a three-case acceptance manifest before running outputs**
+- [x] **Step 1: Freeze a three-case acceptance manifest before running outputs**
 
 Create a private mode-`0600` manifest outside Git with this script so the candidate SHA is captured rather than typed:
 
@@ -827,7 +829,7 @@ with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
 
 For `axios-code-only`, append a newline to the first tracked `lib/**/*.js` file in lexical order. For `gson-mixed`, append a newline to `gson/src/main/java/com/google/gson/Gson.java` and `README.md`. For `cleanmymac-mixed`, use an isolated worktree at `3179c59d47eca5b71dfd5ac8d69ccf043f41ec0a`, copy in the accepted current Graphify artifacts, then append a newline to `Sources/CleanMyMac/SafeCleaner.swift` and `README.md`. Record the manifest SHA-256 in the evaluation report, not the private checkout paths or questions.
 
-- [ ] **Step 2: Run the bounded acceptance cases**
+- [x] **Step 2: Run the bounded acceptance cases**
 
 For each case, record before/after counts, pending file counts, route, integrity summary, report counts, visualization status, question count, duplicated-label count, paid request count, and terminal status. This is a three-case product acceptance check, not a latency or superiority benchmark.
 
@@ -843,11 +845,11 @@ Pass gates:
 - paid request count is zero;
 - a second update returns `already_current` without rewriting graph artifacts.
 
-- [ ] **Step 3: Write the evaluation report**
+- [x] **Step 3: Write the evaluation report**
 
 Document the candidate SHA, Graphify version, manifest hash, environments, exact gates, results, caveats, and the CleanMyMac regression. State explicitly that the evidence proves update parity and output usefulness under three bounded cases, not product superiority, general answer quality, or a JEV gain.
 
-- [ ] **Step 4: Update product copy and scorecard**
+- [x] **Step 4: Update product copy and scorecard**
 
 Use this positioning consistently:
 
@@ -855,7 +857,7 @@ Use this positioning consistently:
 
 Remove or reject wording such as `upgrade`, `better`, `faster`, `more efficient`, `anabolic`, or `replaces Graphify` from public claims.
 
-- [ ] **Step 5: Run all local gates through `mac-gate`**
+- [x] **Step 5: Run all local gates through `mac-gate`**
 
 The repository has no npm preflight. Run the current CI-equivalent commands exactly; do not run them outside `mac-gate`:
 
@@ -887,11 +889,11 @@ mac-gate uv run --frozen pip-audit --strict
 
 Expected: every command exits `0`. Do not run `next build`, a Codespace, a paid API, or a long benchmark.
 
-- [ ] **Step 6: Refresh Graphify after code changes**
+- [x] **Step 6: Refresh Graphify after code changes**
 
 Run the repository's existing Graphify update workflow locally with provider keys unset. Validate `built_at_commit`, graph size, shrink behavior, and `graphify diagnose multigraph`. Keep graph artifacts local unless they are already versioned by this repository's policy.
 
-- [ ] **Step 7: Review the complete diff and commit documentation**
+- [x] **Step 7: Review the complete diff and commit documentation**
 
 ```bash
 git diff --check
@@ -909,7 +911,7 @@ git add README.md docs/jevify-roadmap.md docs/jevify-beta-evidence.md \
 git commit -m "docs: document Jevify Graphify amplification evidence"
 ```
 
-- [ ] **Step 8: Push one branch, update one PR, and integrate autonomously**
+- [x] **Step 8: Push one branch, update one PR, and integrate autonomously**
 
 Push `feat/jevify-graphify-amplification-20261022`, open one PR to `jevify`, review the diff, and wait for all required checks on the latest SHA. Merge only after the local gate and every required GitHub/Pages check are green; then verify the post-merge CI and public page at their persisted terminal states.
 
