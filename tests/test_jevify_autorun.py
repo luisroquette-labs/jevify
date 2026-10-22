@@ -84,8 +84,7 @@ def repo_with_graph(tmp_path: Path) -> tuple[Path, Path]:
                     "user.email=test@example.invalid", "commit", "-qm", "fixture"],
                    cwd=repo, check=True)
     graph = repo / "graphify-out" / "graph.json"
-    _write_graph(graph, _commit(repo))
-    write_graphify_manifest(repo)
+    _write_graph_artifacts(repo, graph)
     return repo, graph
 
 
@@ -229,6 +228,44 @@ def test_update_already_current_does_not_rewrite_graph(repo_with_graph):
 
     assert receipt.status == "already_current"
     assert graph.read_bytes() == before
+
+
+def test_current_graph_with_missing_artifact_is_blocked(repo_with_graph):
+    repo, graph = repo_with_graph
+    accepted = graph.read_bytes()
+    (graph.parent / "GRAPH_REPORT.md").unlink()
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "blocked"
+    assert "GRAPH_REPORT.md" in receipt.diagnostic
+    assert graph.read_bytes() == accepted
+
+
+def test_current_graph_with_blocking_health_is_blocked(
+    repo_with_graph, monkeypatch,
+):
+    repo, graph = repo_with_graph
+    bundle = build_insights(autorun._read_graph(str(graph), query_mode=True), graph)
+    health = dict(bundle.health)
+    health["dangling_endpoint_edges"] = 1
+    monkeypatch.setattr(
+        autorun,
+        "build_insights",
+        lambda *_a, **_k: insights.InsightBundle(
+            bundle.graph_stats,
+            health,
+            bundle.god_nodes,
+            bundle.connections,
+            bundle.questions,
+        ),
+    )
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "blocked"
+    assert receipt.health is not None
+    assert receipt.health["dangling_endpoint_edges"] == 1
 
 
 def test_finalize_verifies_artifacts_and_health(repo_with_graph):
@@ -385,8 +422,7 @@ def test_semantic_update_returns_private_host_handoff(
     assert graph.read_bytes() == accepted
     assert backup.stat().st_mode & 0o077 == 0
     assert backup.parent.stat().st_mode & 0o077 == 0
-    backup.unlink()
-    backup.parent.rmdir()
+    autorun._discard_backup(backup)
 
 
 def test_invalid_replacement_restores_last_accepted_graph(
@@ -406,6 +442,50 @@ def test_invalid_replacement_restores_last_accepted_graph(
 
     assert receipt.status == "blocked"
     assert graph.read_bytes() == accepted
+
+
+def test_blocked_code_update_restores_complete_artifact_snapshot(
+    repo_with_graph, monkeypatch,
+):
+    repo, graph = repo_with_graph
+    labels = graph.parent / ".graphify_labels.json"
+    labels.write_text('{"0":"Accepted"}', encoding="utf-8")
+    artifacts = (
+        graph,
+        graph.parent / "manifest.json",
+        graph.parent / "GRAPH_REPORT.md",
+        graph.parent / "graph.html",
+        labels,
+    )
+    accepted = {path: path.read_bytes() for path in artifacts}
+    (repo / "app.py").write_text("def run(): return 2\n", encoding="utf-8")
+
+    def write_blocked_update(command, repo_arg, env):
+        _write_graph_artifacts(repo, graph)
+        labels.write_text('{"0":"Advanced"}', encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    bundle = build_insights(autorun._read_graph(str(graph), query_mode=True), graph)
+    health = dict(bundle.health)
+    health["dangling_endpoint_edges"] = 1
+    monkeypatch.setattr(autorun, "_run_repair", write_blocked_update)
+    monkeypatch.setattr(
+        autorun,
+        "build_insights",
+        lambda *_a, **_k: insights.InsightBundle(
+            bundle.graph_stats,
+            health,
+            bundle.god_nodes,
+            bundle.connections,
+            bundle.questions,
+        ),
+    )
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "blocked"
+    assert {path: path.read_bytes() for path in artifacts} == accepted
+    assert inspect_context(repo).status == "stale"
 
 
 @pytest.mark.parametrize("artifact", ["report", "visualization"])

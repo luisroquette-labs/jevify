@@ -1,6 +1,7 @@
 import json
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -117,6 +118,10 @@ def test_installed_runner_keeps_nested_target_cwd(tmp_path):
         kind="both",
         root=repo,
     )
+    (graph_path.parent / "GRAPH_REPORT.md").write_text(
+        "## Summary\n- 1 nodes · 0 edges · 1 communities\n", encoding="utf-8",
+    )
+    (graph_path.parent / "graph.html").write_text("current", encoding="utf-8")
     for host in (".codex", ".claude"):
         runner = tmp_path / host / "skills/jevify/scripts/run.py"
         result = subprocess.run(
@@ -166,8 +171,7 @@ def test_installed_mixed_update_requires_host_without_mutating_graph(tmp_path):
         assert payload["status"] == "requires_host"
         assert graph_path.read_bytes() == accepted
         backup = Path(payload["backup_path"])
-        backup.unlink()
-        backup.parent.rmdir()
+        shutil.rmtree(backup.parent)
 
 
 def test_install_preserves_preexisting_skill(tmp_path):
