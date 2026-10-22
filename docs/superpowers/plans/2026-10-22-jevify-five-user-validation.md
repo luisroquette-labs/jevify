@@ -19,7 +19,7 @@
 - Make zero paid JEV or other paid provider calls.
 - Freeze participant eligibility, tool order, questions, gates, and scoring code before reading outcomes.
 - Give both conditions byte-identical starting graph/manifest artifacts and the same commit/diff in separate private worktrees; never run both against one mutable checkout.
-- A false freshness or false update-success claim pauses the affected slot and remains visible in the report.
+- A false freshness or false update-success claim ends the frozen round as `insufficient_evidence`. Any retest uses a new versioned manifest/directory, while the failed round remains immutable and visible.
 - Do not offer payment, incentives, discounts, or product access without separate approval.
 - Use one task branch and one PR to `jevify`; run tests and lint only through `mac-gate`; never run a local build.
 
@@ -78,9 +78,16 @@ INITIAL = {
     "jevify_usefulness": 5,
     "freshness_trust": 5,
     "preferred_next": "jevify",
-    "novel_source_verified_outcome": True,
+    "jevify_only_novel_source_verified": True,
     "paid_request_count": 0,
-    "initial_run_sha256": "c" * 64,
+    "graphify_run_sha256": "c" * 64,
+    "jevify_run_sha256": "d" * 64,
+    "graphify_start_graph_sha256": "e" * 64,
+    "jevify_start_graph_sha256": "e" * 64,
+    "graphify_start_manifest_sha256": "f" * 64,
+    "jevify_start_manifest_sha256": "f" * 64,
+    "graphify_diff_sha256": "9" * 64,
+    "jevify_diff_sha256": "9" * 64,
 }
 
 TERMINAL = {
@@ -137,9 +144,16 @@ class InitialRecord:
     jevify_usefulness: int
     freshness_trust: int
     preferred_next: Literal["graphify", "jevify", "neither"]
-    novel_source_verified_outcome: bool
+    jevify_only_novel_source_verified: bool
     paid_request_count: int
-    initial_run_sha256: str
+    graphify_run_sha256: str
+    jevify_run_sha256: str
+    graphify_start_graph_sha256: str
+    jevify_start_graph_sha256: str
+    graphify_start_manifest_sha256: str
+    jevify_start_manifest_sha256: str
+    graphify_diff_sha256: str
+    jevify_diff_sha256: str
 
 
 @dataclass(frozen=True)
@@ -156,7 +170,7 @@ class TerminalRecord:
     initial_record_sha256: str
 ```
 
-Define `ParticipantReceipt` as the combined immutable view used by the scorer. The `private_bundle` fixture writes canonical JSON for the initial record, hashes those exact bytes, and replaces the `AUTO` test sentinel before writing the terminal record. Parse timestamps as timezone-aware UTC. Verify `terminal.initial_record_sha256 == sha256(initial.json bytes)`. Reject unknown keys, mismatched participant IDs, duplicate participant IDs at aggregation time, non-40-character lowercase hexadecimal commits, non-64-character lowercase hexadecimal hashes, ratings outside `1..5`, repeated tool names, repeat use on the same commit, repeat use without a run hash, a reminder-contaminated repeat, a repeat timestamp outside `(initial_at, initial_at + 7 days]`, an observation before the seventh-day boundary, or files whose mode exposes group/other permissions.
+Define `ParticipantReceipt` as the combined immutable view used by the scorer. The `private_bundle` fixture writes canonical JSON for the initial record, hashes those exact bytes, and replaces the `AUTO` test sentinel before writing the terminal record. Parse timestamps as timezone-aware UTC. Verify `terminal.initial_record_sha256 == sha256(initial.json bytes)`. Reject unknown keys, mismatched participant IDs, duplicate participant IDs at aggregation time, non-40-character lowercase hexadecimal commits, non-64-character lowercase hexadecimal hashes, unequal starting graph/manifest/diff hashes, ratings outside `1..5`, repeated tool names, repeat use on the same commit, repeat use without a run hash, a reminder-contaminated repeat, a repeat timestamp outside `(initial_at, initial_at + 7 days]`, an observation before the seventh-day boundary, symlinks, directories not exactly mode `0700`, or files not exactly mode `0600`. Preserve nonnegative paid-request counts so the scorer can select `insufficient_evidence` and identify the affected participant.
 
 - [ ] **Step 4: Add exact invalid-state tests**
 
@@ -170,7 +184,7 @@ Define `ParticipantReceipt` as the combined immutable view used by the scorer. T
     ("terminal", {"repeat_run_sha256": None}, "repeat run"),
     ("terminal", {"reminder_sent": True}, "reminder"),
     ("terminal", {"repeat_at": "2026-10-30T15:00:01Z"}, "seven-day window"),
-    ("terminal", {"paid_request_count": 1}, "paid request"),
+    ("initial", {"jevify_start_graph_sha256": "8" * 64}, "starting graph"),
 ])
 def test_invalid_receipt_is_rejected(private_bundle, stage, change, message):
     initial, terminal = dict(INITIAL), dict(TERMINAL)
@@ -223,12 +237,12 @@ def test_less_than_five_unique_receipts_is_insufficient(valid_receipts):
     assert score(valid_receipts(count=4)).decision == "insufficient_evidence"
 
 
-def test_false_freshness_is_insufficient_and_pauses_slot(valid_receipts):
+def test_false_freshness_is_round_ending_and_insufficient(valid_receipts):
     receipts = valid_receipts()
     receipts[0] = replace(receipts[0], freshness_correct=False)
     result = score(receipts)
     assert result.decision == "insufficient_evidence"
-    assert result.paused_participant_ids == ("p01",)
+    assert result.safety_failure_participant_ids == ("p01",)
 ```
 
 - [ ] **Step 2: Run tests and confirm the scorer is absent**
@@ -246,14 +260,16 @@ class ValidationScore:
     prefer_jevify: int
     repeated_jevify: int
     novel_source_verified: int
-    false_freshness: int
-    false_update: int
-    paid_requests: int
-    paused_participant_ids: tuple[str, ...]
+    known_false_freshness: int
+    known_false_update: int
+    known_paid_requests: int
+    safety_failure_participant_ids: tuple[str, ...]
+    invalid_participant_ids: tuple[str, ...]
+    validation_failure_count: int
     decision: Literal["continue_product", "graphify_extension", "insufficient_evidence"]
 ```
 
-Return `insufficient_evidence` before commercial scoring when there are not exactly five unique eligible receipts, any slot is paused, or paid requests are nonzero. Otherwise return `continue_product` only for preference `>=3`, reminder-free later-commit repeat `>=3`, and novel source-verified outcomes `>=2`; return `graphify_extension` for every other complete cohort.
+Return `insufficient_evidence` before commercial scoring when there are not exactly five unique eligible receipts, any receipt/manifest validation failure exists, any round-ending safety failure exists, or paid requests are nonzero. `validate` remains fail-fast and names affected participant IDs; `score` remains fail-closed and still writes a public aggregate scorecard containing only anonymous participant IDs and failure counts. Otherwise return `continue_product` only for preference `>=3`, reminder-free later-commit repeat `>=3`, and novel source-verified outcomes `>=2`; return `graphify_extension` for every other complete cohort.
 
 - [ ] **Step 4: Add deterministic serialization and schema tests**
 
@@ -307,7 +323,7 @@ Write a private mode-`0600` manifest containing only `p01` through `p05`, eligib
 
 - [ ] **Step 4: Conduct each 25-minute initial session after approval**
 
-Create two isolated private worktrees at the frozen commit, seed both from the same accepted Graphify artifacts, apply the same diff, and verify the starting hashes. Run the conditions in the frozen order, removing provider credentials in both. Create `pNN/initial.json` immediately after ratings lock. Do not mutate the frozen manifest; write the initial-record hash to a separate append-only `events/pNN-initial.json`. Stop an affected slot on isolation mismatch, false freshness, false update success, paid request, or privacy-schema failure; preserve the failed record and do not substitute a sixth participant silently.
+Create two isolated private worktrees at the frozen commit, seed both from the same accepted Graphify artifacts, apply the same diff, and verify the starting hashes. Run the conditions in the frozen order, removing provider credentials in both. Create `pNN/initial.json` immediately after ratings lock. Do not mutate the frozen manifest; write the initial-record hash to a separate append-only `events/pNN-initial.json`. End the frozen round as `insufficient_evidence` on isolation mismatch, false freshness, false update success, paid request, or privacy-schema failure. Preserve the failed round and do not substitute a sixth participant silently; any retest uses a new versioned manifest and directory.
 
 - [ ] **Step 5: Observe seven days without a reuse reminder**
 
@@ -364,9 +380,10 @@ Report eligibility, cohort size, tool order, preference, repeat use, novel verif
 - [ ] **Step 4: Run gates, review, and integrate one PR**
 
 ```bash
-mac-gate uv run --frozen pytest tests/test_jevify_user_validation.py -q
+mac-gate uv run --frozen pytest tests/ -q --tb=short
 mac-gate uv run --frozen ruff check tools/jevify_user_validation.py tests/test_jevify_user_validation.py
 mac-gate uv run --frozen pyright tools/jevify_user_validation.py
+mac-gate uv run --frozen bandit -r tools/jevify_user_validation.py -ll
 git diff --check
 ```
 

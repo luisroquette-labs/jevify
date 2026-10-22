@@ -65,9 +65,10 @@ Continue treating Jevify as a standalone product hypothesis only if all are true
 - No run makes a paid JEV or other paid provider call.
 
 If preference or repeat use misses its threshold, position Jevify as a Graphify
-extension or upstream contribution rather than a standalone product. If a false
-freshness claim occurs, pause the pilot, fix it, and restart only the affected
-participant slot with the failure preserved in the report.
+extension or upstream contribution rather than a standalone product. A false
+freshness or update-success claim ends the frozen round as `insufficient_evidence`.
+Any retest starts a new versioned manifest and directory after the defect is fixed;
+the failed round remains immutable and visible in the report.
 
 ## Outputs
 
