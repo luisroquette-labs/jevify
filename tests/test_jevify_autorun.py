@@ -180,6 +180,22 @@ def test_plan_update_routes_by_pending_work(
     assert plan_update(state).kind == expected
 
 
+def test_commit_only_drift_routes_to_artifact_refresh(repo_with_graph):
+    repo, graph = repo_with_graph
+    state = ContextState(
+        "stale",
+        InvocationContext(repo, graph, _commit(repo)),
+        GraphFreshness("current"),
+        autorun._read_graph(str(graph), query_mode=True),
+        "graph commit differs from HEAD",
+    )
+
+    route = plan_update(state)
+
+    assert route.kind == "local_graphify"
+    assert route.operation == "refresh"
+
+
 def test_code_deletion_only_routes_to_local_graphify(repo_with_graph):
     repo, graph = repo_with_graph
     state = ContextState(
@@ -554,7 +570,7 @@ def test_missing_or_malformed_persisted_commit_is_stale(repo_with_graph, value):
     ("initial", "expected", "call_count"),
     [("missing", ["extract", ".", "--code-only"], 2),
      ("corrupt", ["extract", ".", "--code-only", "--force"], 2),
-     ("stale", ["update", "."], 1)],
+     ("stale", ["cluster-only", "."], 1)],
 )
 def test_update_stages_run_without_provider_credentials(
     repo_with_graph, monkeypatch, initial, expected, call_count,
@@ -588,6 +604,57 @@ def test_update_stages_run_without_provider_credentials(
     assert not (set(autorun.PROVIDER_ENV_KEYS) & set(env))
     if call_count == 2:
         assert calls[1][0] == [sys.executable, "-m", "graphify", "cluster-only", "."]
+
+
+def test_commit_only_drift_refreshes_without_reextracting(
+    repo_with_graph, monkeypatch,
+):
+    repo, graph = repo_with_graph
+    original_nodes = autorun.graph_stats(graph).nodes
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+         "commit", "--allow-empty", "-qm", "metadata only"],
+        cwd=repo, check=True,
+    )
+    calls = []
+
+    def fake_cluster(command, repo_arg, env):
+        calls.append(command)
+        assert autorun.graph_stats(graph).built_at_commit == _commit(repo)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(autorun, "_run_repair", fake_cluster)
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "updated"
+    assert receipt.route.operation == "refresh"
+    assert calls == [[sys.executable, "-m", "graphify", "cluster-only", "."]]
+    assert autorun.graph_stats(graph).nodes == original_nodes
+    assert inspect_context(repo).status == "ready"
+
+
+def test_failed_commit_only_refresh_restores_previous_commit(
+    repo_with_graph, monkeypatch,
+):
+    repo, graph = repo_with_graph
+    accepted = graph.read_bytes()
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+         "commit", "--allow-empty", "-qm", "metadata only"],
+        cwd=repo, check=True,
+    )
+    monkeypatch.setattr(
+        autorun, "_run_repair",
+        lambda command, repo_arg, env: subprocess.CompletedProcess(
+            command, 1, "", "cluster failed",
+        ),
+    )
+
+    receipt = run_update(repo)
+
+    assert receipt.status == "blocked"
+    assert graph.read_bytes() == accepted
 
 
 def test_failed_repair_does_not_retry(repo_with_graph, monkeypatch):
