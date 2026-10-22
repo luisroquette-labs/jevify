@@ -131,6 +131,10 @@ def _rank_questions(raw: list[dict], gods: list[dict], connections: list[dict]) 
         text = normalize_question(question)
         if not text or text in seen_text:
             continue
+        if item.get("type") == "surprising_connection":
+            labels = re.findall(r"`[^`]+`", text)
+            if len(set(labels)) < 2:
+                continue
         seen_text.add(text)
         prepared.append(SuggestedQuestion(
             text=text,

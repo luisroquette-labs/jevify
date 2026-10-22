@@ -339,6 +339,20 @@ def test_question_text_caps_long_bridge_lists():
     assert text == "Why does `A` connect `B` to `C`, `D`, `E` and other communities?"
 
 
+def test_questions_drop_same_label_surprising_connections():
+    ranked = insights._rank_questions(
+        [{
+            "type": "surprising_connection",
+            "question": "What explains the connection between `Node` and `Node`?",
+            "why": "different IDs",
+        }],
+        [],
+        [],
+    )
+
+    assert ranked == ()
+
+
 def test_update_only_does_not_call_graph_query(repo_with_graph, monkeypatch):
     repo, graph = repo_with_graph
     _write_graph_artifacts(repo, graph)
