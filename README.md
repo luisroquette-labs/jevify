@@ -4,21 +4,21 @@
   <a href="https://luisroquette-labs.github.io/jevify/"><img src="docs/logo-text.svg" width="400" alt="Jevify — memory-guided code search for Claude Code and Codex"/></a>
 </p>
 
-This fork is the home of [Jevify for Claude Code and Codex](skills/jevify/SKILL.md): an offline-first Graphify and Claude Mem skill with optional Jev relevance decisions. Jevify is available as a transparent technical beta. Graphify remains the graph engine, memory remains a hint, and JEV stays optional.
+This fork is the home of [Jevify for Claude Code and Codex](skills/jevify/SKILL.md). Jevify orchestrates the complete applicable Graphify workflow, verifies that the graph is current, and adds prioritized questions and optional reviewed memory. Jevify is available as a transparent technical beta. Graphify remains the structural engine; JEV remains optional.
 
 > **Current Jev requirement:** offline Graphify and Jevify features need no provider account. Using Jev live currently requires each user to have their own OpenRouter account, supply their own project-scoped API key as `JEV_MEMORY_PILOT_API_KEY`, and pay for their own requests. Jevify does not currently provide hosted Jev access, a shared key, or an OAuth sign-in flow.
 
-**Verified beta evidence:** 20/20 clean installs across Ubuntu and macOS, 30/30 zero-configuration cases without interaction, a passing Graphify compatibility receipt, and 8,608 local tests. The paid product benchmark stopped at 0/60; eight earlier pairs are diagnostic only. Read the [beta evidence and limits](docs/jevify-beta-evidence.md), inspect the [scorecard](benchmarks/jevify-beta/scorecard.md), or [see the live beta page](https://luisroquette-labs.github.io/jevify/).
+**Verified beta evidence:** 20/20 clean installs across Ubuntu and macOS, 30/30 zero-configuration cases without interaction, a passing Graphify compatibility receipt, three bounded offline update cases, and 8,644 local tests. The paid product benchmark stopped at 0/60; eight earlier pairs are diagnostic only. Read the [beta evidence and limits](docs/jevify-beta-evidence.md), the [update evaluation](docs/jevify-graphify-amplification-evaluation.md), inspect the [scorecard](benchmarks/jevify-beta/scorecard.md), or [see the live beta page](https://luisroquette-labs.github.io/jevify/).
 
 For Graphify, Claude Mem, or JEV review, use the [seven-slide visual presentation](docs/jevify-presentation.pdf), its [editable HTML source](docs/jevify-presentation.html), the [speaker notes](docs/jevify-presentation.md), the [one-page participant brief](docs/jevify-participant-brief.md), and the [evidence-bounded context for AI agents](docs/jevify-ai-context.md).
 
 ## Use Jevify
 
-Jevify uses Graphify to build and query a code graph. It adds selected Claude Mem observations and can optionally use Jev to rank links between those observations and graph nodes. The Graphify engine remains a dependency; Jev calls are off by default.
+Jevify uses Graphify to build, update, diagnose, report, visualize, and query the code graph. It adds verified freshness, prioritized questions, selected Claude Mem observations, and optional JEV relevance decisions. The Graphify engine remains a dependency; JEV calls are off by default.
 
 1. Clone this repository and install [`skills/jevify`](skills/jevify/SKILL.md) as a skill in Claude Code or Codex. The skill contains the build commands, corpus schema, and privacy rules.
 2. In Claude Code, ask `/jevify` to investigate a question in a repository. In Codex, ask `$jevify` the same question. Name the project and the observations you want considered.
-3. The skill checks that `graphify-out/graph.json` matches the repository HEAD, builds it offline if needed, and runs the original Graphify query as the baseline. The [runner](skills/jevify/scripts/run.py) accepts a selected corpus outside Git for an offline comparison.
+3. The skill compares the repository with Graphify's manifest, runs or routes the applicable Graphify update, validates the resulting artifacts, and uses the original Graphify query as the baseline. The [runner](skills/jevify/scripts/run.py) accepts a selected corpus outside Git for an offline comparison.
 
 Add `--candidate-mode memory` to the runner for experimental memory candidates. Reviewed observation `source_paths` can guide two of the ten slots toward cited implementation files; without them, the earlier 7-question/3-memory rule applies. It changes candidate selection only; without valid decisions, the answer still uses the original Graphify query. See the [evaluation record](docs/jev-memory-pilot-evaluation.md) for the measured limits and the [five-stage roadmap](docs/jevify-roadmap.md) for the planned comparison and sales page.
 For the optional offline `fast-source` experiment, Jevify scores only nodes from cited files in one pass and uses the best three as Graphify traversal seeds. Without cited files, it delegates directly to Graphify. Historical experiment reports remain available for technical inspection, but they are not beta claims.

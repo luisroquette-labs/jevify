@@ -1,6 +1,6 @@
 # Jevify Graphify Amplification
 
-Status: draft
+Status: accepted for technical beta
 
 ## Product contract
 
