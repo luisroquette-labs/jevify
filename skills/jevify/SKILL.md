@@ -44,7 +44,8 @@ runs five or more paired offline retrieval passes for one frozen v2 case.
 2. If the status is `already_current` or `updated`, render the receipt.
 3. If `status=requires_host`, use the installed Graphify skill and its `--update`
    workflow in the same repository with provider keys unset. Preserve any
-   `backup_path` and the same `GRAPHIFY_VIZ_NODE_LIMIT` value. During this flow,
+   `backup_path`, set `GRAPHIFY_BACKEND=none`, and preserve the same
+   `GRAPHIFY_VIZ_NODE_LIMIT` value. During this flow,
    do not use a paid provider and do not report success before finalize.
 4. Run `uv run "$JEVIFY_SKILL_DIR/scripts/run.py" finalize --json`, adding
    `--backup PATH` when the update receipt contains one.

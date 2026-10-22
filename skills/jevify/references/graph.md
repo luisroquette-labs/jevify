@@ -4,8 +4,9 @@ Use the Graphify version pinned by this skill. In a cloned Jevify checkout, run 
 
 ```bash
 env -u GEMINI_API_KEY -u GOOGLE_API_KEY -u OPENAI_API_KEY \
-  -u ANTHROPIC_API_KEY -u OPENROUTER_API_KEY \
-  GRAPHIFY_NO_AUTO_REFRESH=1 \
+  -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u OPENROUTER_API_KEY \
+  -u GOOGLE_APPLICATION_CREDENTIALS \
+  GRAPHIFY_BACKEND=none GRAPHIFY_NO_AUTO_REFRESH=1 \
   uv run --project /path/to/jevify --frozen python -m graphify extract . --code-only
 ```
 
