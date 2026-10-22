@@ -22,13 +22,20 @@ Run the contract tests with:
 mac-gate uv run --frozen pytest tests/test_jeviphy_eval_contract.py -q
 ```
 
-The network-agent batch uses `tools/jeviphy_product_batch.py`. It requires the three live-execution guardrails from the specification, a project-scoped key in `JEVIPHY_OPENROUTER_API_KEY`, and a private run root containing the frozen arm datasets and model configuration. Pass a fresh private directory through `--output-dir`; the runner refuses to mix an earlier run into new evidence. The approved OpenRouter ceiling must cover `agent.cost_limit` times the requested arm count. Modal sandbox spend is separate. The runner accepts an arm only when mini-swe-agent writes its trajectory. A provider or sandbox failure stops the serial batch immediately, even when the outer command exits zero.
+The network-agent batch uses `tools/jeviphy_product_batch.py`. It requires the three live-execution guardrails from the specification, a project-scoped key in `JEVIPHY_OPENROUTER_API_KEY`, and a private run root containing the frozen arm datasets, manifest, and model configuration. The runner validates both datasets before reading the key, allows only bounded context appended to `problem_statement`, and rejects changes to every other field. Each mini-swe-agent prediction is scored by the official SWE-bench Docker evaluator; a trajectory or submitted patch alone is never success.
+
+Use `--canary --max-new-arms 2` with ceilings for exactly two agent arms to select one case deterministically from the frozen manifest hash. The complete run uses `--max-new-arms 12` or less for bounded, serial chunks. `--max-agent-arms` counts paid agent executions; the frozen `agent.step_limit` caps model requests inside each arm. `--max-cost-usd` is cumulative across the selected run. The append-only journal subtracts prior arms and exact decimal cost before every new paid arm. A missing or malformed cost blocks resume. The runner seals `product-report.json` only after every selected arm exists, and stops on provider or evaluator infrastructure failure. Keep the output directory private because it contains patches, trajectories, and logs.
 
 Invoke it from the repository root as a module:
 
 ```bash
 uv run --frozen python -m tools.jeviphy_product_batch \
-  --root "$PRIVATE_ROOT" --cases "$PRIVATE_ROOT/isolated/remaining-cases.json" \
+  --root "$PRIVATE_ROOT" --cases "$PRIVATE_ROOT/all-cases.json" \
   --output-dir "$PRIVATE_OUTPUT" --allow-network-agent \
-  --max-agent-calls 186 --max-cost-usd 14.88
+  --max-agent-arms 240 --max-cost-usd 19.20 --max-new-arms 12
 ```
+
+Add `--preview` to validate every input and print the frozen execution envelope
+without reading a provider key, creating the output directory, or making a paid call.
+The runner pins mini-swe-agent `2.4.6` and SWE-bench `5.0.2`; the run journal also
+pins Python, Docker, machine class, model, command, candidate, and dataset hashes.

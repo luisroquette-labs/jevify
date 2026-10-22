@@ -47,7 +47,7 @@ Typ `/graphify` in je AI-codeerassistent en die brengt je hele project (code, do
   <em>De FastAPI-codebase in kaart gebracht door graphify. Elke node is een concept, kleuren zijn gedetecteerde communities, en het geheel is klikbaar in graph.html.</em>
 </p>
 
-**Aan de slag** (30 seconden). Vereist Python 3.10+ en uv (of pipx):
+**Aan de slag** (30 seconden). Vereist Python 3.11+ en uv (of pipx):
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)

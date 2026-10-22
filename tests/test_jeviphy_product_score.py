@@ -1,7 +1,10 @@
 from copy import deepcopy
 import json
 
+import pytest
+
 from tools.jeviphy_product_score import (
+    BETA_READY,
     INTERNAL_PRODUCT_WIN,
     NO_DIFFERENCE,
     REPRODUCED_PRODUCT_WIN,
@@ -43,17 +46,19 @@ def retrieval_records():
     return records
 
 
-def product_records(*, wins=20):
+def product_records(*, wins=8):
     records = []
-    for index in range(120):
-        control = index < 40
-        advantage = 40 <= index < 40 + wins
+    for index in range(30):
+        control = index < 10
+        advantage = 10 <= index < 10 + wins
         baseline_success = not advantage
         jeviphy_success = True
         records.append(
             {"pair": {
                 "case_id": f"p{index}",
-                "stratum": "no_source" if control else "valid_source",
+                "stratum": "no_source" if control else (
+                    "valid_source" if index < 20 else "stale_source"
+                ),
                 "pass_index": 0,
                 "baseline": arm(success=baseline_success, duration=100, hits=0, first=False,
                                 digest=f"p{index}", tokens=100),
@@ -95,7 +100,7 @@ def test_retrieval_win_cannot_be_called_product_superiority():
     scorecard = score_run(report)
     assert scorecard.retrieval.status == "pass"
     assert scorecard.product.status == "insufficient_evidence"
-    assert allowed_claim(scorecard) == RETRIEVAL_ONLY
+    assert allowed_claim(scorecard) == BETA_READY
 
 
 def test_external_reproduction_is_required_for_public_product_claim():
@@ -106,8 +111,7 @@ def test_external_reproduction_is_required_for_public_product_claim():
 
 def test_confidence_interval_crossing_zero_blocks_claim():
     report = complete_report()
-    report["product_records"] = product_records(wins=30)
-    for wrapper in report["product_records"][70:88]:
+    for wrapper in report["product_records"][18:23]:
         wrapper["pair"]["baseline"]["success"] = True
         wrapper["pair"]["jeviphy"]["success"] = False
     scorecard = score_run(report)
@@ -137,6 +141,24 @@ def test_control_regression_and_stale_loss_fail_closed():
 def test_missing_evidence_emits_no_difference():
     scorecard = score_run({})
     assert allowed_claim(scorecard) == NO_DIFFERENCE
+
+
+def test_product_pairs_fail_closed_on_duplicates_or_contradictions():
+    report = complete_report()
+    report["product_records"].append(deepcopy(report["product_records"][0]))
+    with pytest.raises(ValueError, match="duplicate pair"):
+        score_run(report)
+
+    report = complete_report()
+    report["product_records"][0]["pair"]["baseline"]["success"] = "yes"
+    with pytest.raises(ValueError, match="boolean success"):
+        score_run(report)
+
+
+def test_incomplete_product_evidence_is_insufficient():
+    report = complete_report()
+    report["product_records"].pop()
+    assert score_run(report).product.status == "insufficient_evidence"
 
 
 def test_usability_requires_macos_and_ubuntu():

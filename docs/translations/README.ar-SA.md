@@ -47,7 +47,7 @@
   <em>قاعدة كود FastAPI مرسومة بواسطة graphify. كل عقدة مفهوم، والألوان مجتمعات مكتشفة، والكل قابل للنقر في graph.html.</em>
 </p>
 
-**ابدأ الآن** (30 ثانية). يتطلب Python 3.10+ وuv (أو pipx):
+**ابدأ الآن** (30 ثانية). يتطلب Python 3.11+ وuv (أو pipx):
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)

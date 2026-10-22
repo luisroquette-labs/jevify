@@ -73,8 +73,7 @@ def score(records: list[dict], manifest: dict) -> ZeroConfigScore:
     failed = []
     interaction = 0
     exact_total = exact_matches = 0
-    direct_times = []
-    jeviphy_times = []
+    overheads = []
     for case_id, case in expected.items():
         record = by_id[case_id]
         interaction += int(bool(record.get("interaction_required")))
@@ -93,25 +92,18 @@ def score(records: list[dict], manifest: dict) -> ZeroConfigScore:
                 if direct <= 0 or jeviphy <= 0:
                     failed.append(case_id)
                 else:
-                    direct_times.append(direct)
-                    jeviphy_times.append(jeviphy)
-    median = (
-        statistics.median(jeviphy_times) / statistics.median(direct_times) - 1
-        if direct_times else None
-    )
-    p95 = (
-        percentile(jeviphy_times, 0.95) / percentile(direct_times, 0.95) - 1
-        if direct_times else None
-    )
+                    overheads.append(jeviphy / direct - 1)
+    median = statistics.median(overheads) if overheads else None
+    p95 = percentile(overheads, 0.95) if overheads else None
     thresholds = manifest["thresholds"]
     passed = (
-        not failed and interaction == 0 and exact_matches == exact_total and direct_times
+        not failed and interaction == 0 and exact_matches == exact_total and overheads
         and median <= thresholds["median_overhead_fraction"]
         and p95 <= thresholds["p95_overhead_fraction"]
     )
     return ZeroConfigScore(
         "pass" if passed else "fail", len(records), len(manifest["repos"]), interaction,
-        exact_total, exact_matches, len(direct_times), median, p95, tuple(sorted(set(failed))),
+        exact_total, exact_matches, len(overheads), median, p95, tuple(sorted(set(failed))),
     )
 
 
@@ -259,6 +251,7 @@ def run_evaluation(manifest_path: Path, repo_root: Path, output_dir: Path, runne
                     if case["exact_output"]:
                         direct = _run(direct_cmd, cwd, env)
                     jeviphy = _run(jev_cmd, cwd, env)
+                assert jeviphy is not None
                 expected_error = case["expected"] == "error"
                 successful = jeviphy["returncode"] == 0
                 outcome = "error" if not successful else "success"

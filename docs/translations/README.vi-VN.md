@@ -47,7 +47,7 @@ Gõ `/graphify` trong trợ lý lập trình AI của bạn và nó ánh xạ to
   <em>Mã nguồn FastAPI được graphify ánh xạ. Mỗi nút là một khái niệm, màu sắc là các cộng đồng được phát hiện, và toàn bộ có thể nhấp được trong graph.html.</em>
 </p>
 
-**Bắt đầu** (30 seconds). Cần Python 3.10+ và uv (hoặc pipx):
+**Bắt đầu** (30 seconds). Cần Python 3.11+ và uv (hoặc pipx):
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)

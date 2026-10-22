@@ -47,7 +47,7 @@
   <em>由 graphify 映射的 FastAPI 程式碼庫。每個節點是一個概念，顏色代表偵測到的社群，整張圖在 graph.html 中都可點擊。</em>
 </p>
 
-**開始使用**（30 seconds）。需要 Python 3.10+ 和 uv（或 pipx）：
+**開始使用**（30 seconds）。需要 Python 3.11+ 和 uv（或 pipx）：
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)

@@ -64,74 +64,72 @@
 <body>
   <section class="slide cover">
     <img class="mark" src="logo-icon.svg" alt="Jeviphy mark">
-    <div class="eyebrow">Open-source experiment</div>
+    <div class="eyebrow">Transparent technical beta</div>
     <h1>Jeviphy</h1>
     <div class="rule"></div>
-    <p class="subtitle">Source-aware code search from reviewed memory</p>
+    <p class="subtitle">Graphify code graphs with reviewed memory hints</p>
     <p class="source">Graphify remains the graph engine</p><span class="page">01</span>
   </section>
 
   <section class="slide">
     <img class="logo" src="logo-icon.svg" alt="">
-    <div class="eyebrow">The problem</div>
-    <h2>Broad questions can rank unrelated nodes before the right source</h2>
+    <div class="eyebrow">Component boundary</div>
+    <h2>Graph structure and reviewed context stay separate</h2>
     <div class="flow">
-      <strong>Question</strong><span class="arrow">›</span>
+      <strong>Graphify graph</strong><span class="arrow">›</span>
       <strong class="memory">Reviewed source paths</strong><span class="arrow">›</span>
-      <strong>Graphify traversal</strong><span class="arrow">›</span>
-      <strong class="result">Source-cited result</strong>
+      <strong>Jeviphy validation</strong><span class="arrow">›</span>
+      <strong class="result">Agent source check</strong>
     </div>
-    <p class="source">Memory narrows the search. The agent still verifies the cited source.</p><span class="page">02</span>
+    <p class="source">Memory is a hint. The graph is navigation evidence. The agent verifies the source.</p><span class="page">02</span>
   </section>
 
   <section class="slide">
     <img class="logo" src="logo-icon.svg" alt="">
     <div class="eyebrow">Local workflow</div>
-    <h2>Five bounded steps, with an exact fallback</h2>
+    <h2>Five bounded steps with the original fallback</h2>
     <div class="steps">
       <div class="step"><b>1</b><span>Confirm graph and repository commit match</span></div>
       <div class="step"><b>2</b><span>Read selected, reviewed observations</span></div>
       <div class="step"><b>3</b><span>Validate source paths in the repository</span></div>
-      <div class="step"><b>4</b><span>Seed traversal with the best three nodes</span></div>
+      <div class="step"><b>4</b><span>Run bounded Graphify traversal</span></div>
       <div class="step"><b>5</b><span>Fall back when evidence is absent or invalid</span></div>
     </div>
-    <p class="offline">The measured <code>fast-source</code> path runs offline. Paid Jev calls stay optional and off by default.</p><span class="page">03</span>
+    <p class="offline">The default path runs offline. Paid JEV calls stay optional and require explicit approval.</p><span class="page">03</span>
   </section>
 
   <section class="slide">
     <img class="logo" src="logo-icon.svg" alt="">
-    <div class="eyebrow">Frozen Click cohort · 40 questions · 5 timing passes</div>
-    <h2>Jeviphy improved retrieval and latency in the measured experiment</h2>
+    <div class="eyebrow">Beta evidence · candidate a2f7aee0</div>
+    <h2>The installation and zero-configuration gates passed</h2>
     <div class="chart">
-      <span class="label">Top-five exact targets</span><div class="bar"><i style="width:18%"></i></div><span class="value">2 / 40</span>
-      <span class="label">Jeviphy</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">11 / 40</span>
-      <span class="label">First-pass source hits</span><div class="bar"><i style="width:69%"></i></div><span class="value">22 / 40</span>
-      <span class="label">Jeviphy</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">32 / 40</span>
-      <span class="label">Overall p50</span><div class="bar"><i style="width:100%"></i></div><span class="value">183.92 ms</span>
-      <span class="label">Jeviphy</span><div class="bar green"><i style="width:43%"></i></div><span class="value accent">79.63 ms</span>
+      <span class="label">Clean installation</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">20 / 20</span>
+      <span class="label">Zero configuration</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">30 / 30</span>
+      <span class="label">Compatibility</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">pass</span>
+      <span class="label">Local test suite</span><div class="bar green"><i style="width:100%"></i></div><span class="value accent">8,601</span>
     </div>
-    <p class="pair-note"><b>198 of 200</b> paired source-backed runs were faster. Control answers stayed byte-identical.</p>
-    <p class="source">Same AST graph, source commit, machine, order policy and question set</p><span class="page">04</span>
+    <p class="pair-note">Installation covered Ubuntu and macOS. Zero-configuration cases required no interaction.</p>
+    <p class="source">Evidence hashes are published in the beta scorecard</p><span class="page">04</span>
   </section>
 
   <section class="slide">
     <img class="logo" src="logo-icon.svg" alt="">
-    <div class="eyebrow">Failed experiment</div>
-    <h2>The paid reranker did not clear its advancement gate</h2>
+    <div class="eyebrow">Stopped evaluation</div>
+    <h2>The long product benchmark is closed for this beta</h2>
     <div class="failed">
-      <div><div class="number">4 / 19</div><p class="caption">Top-five hits stayed unchanged on identical bounded candidate pools</p></div>
-      <div class="latency"><span>Added API latency</span><strong>649.74 ms</strong><span>p50</span><strong>1,083.09 ms</strong><span>p95</span></div>
+      <div><div class="number">0 / 60</div><p class="caption">v13 stopped after the technical beta decision</p></div>
+      <div class="latency"><span>Earlier v11 run</span><strong>8 pairs</strong><span>classification</span><strong>diagnostic</strong><span>public proof</span></div>
     </div>
-    <p class="verdict">Jev remains optional. The positive result came from local source-cited retrieval.</p><span class="page">05</span>
+    <p class="verdict">No long benchmark or paid API run is part of the release decision.</p><span class="page">05</span>
   </section>
 
   <section class="slide">
     <img class="logo" src="logo-icon.svg" alt="">
     <div class="eyebrow">Evidence boundary</div>
-    <h2>What the current experiment supports</h2>
+    <h2>What the technical beta supports</h2>
     <div class="evidence">
-      <section><h3>Supported</h3><ul><li>Promising results for synthetic source-cited questions</li><li>Better retrieval and latency on one frozen Click cohort</li><li>Offline operation with the original Graphify fallback</li><li>A reproducible 60-second demo with no API key</li></ul></section>
-      <section><h3>Still open</h3><ul><li>Real-user task outcomes</li><li>Relevance gains on real project memory</li><li>Results across more repositories and question types</li><li>Interoperability with Claude Mem and upstream Graphify</li></ul></section>
+      <section><h3>Supported</h3><ul><li>Clean installation on Ubuntu and macOS</li><li>Zero-configuration execution without interaction</li><li>Graphify-compatible fallback</li><li>Offline default operation</li></ul></section>
+      <section><h3>Still open</h3><ul><li>Real-user task outcomes</li><li>Independent product evaluation</li><li>Results across more repositories and question types</li><li>Maintainer feedback on the interoperability boundary</li></ul></section>
     </div>
     <span class="page">06</span>
   </section>
@@ -139,13 +137,13 @@
   <section class="slide">
     <img class="logo" src="logo-icon.svg" alt="">
     <div class="eyebrow">Review request</div>
-    <h2>Three questions for maintainers and testers</h2>
+    <h2>Three focused questions for maintainers</h2>
     <div class="asks">
-      <div class="ask"><h3>Graphify maintainers</h3><p>Should source-seeded traversal live inside Graphify or remain an external adapter?</p></div>
-      <div class="ask"><h3>Claude Mem maintainers</h3><p>Is an optional, reviewed <code>source_paths</code> field a useful interoperability boundary?</p></div>
-      <div class="ask"><h3>Independent testers</h3><p>Can the frozen workflow reproduce on another repository without weakening fallback or privacy?</p></div>
+      <div class="ask"><h3>Graphify</h3><p>Does the adapter preserve graph semantics and the original fallback?</p></div>
+      <div class="ask"><h3>Claude Mem</h3><p>Is reviewed <code>source_paths</code> metadata a safe interoperability boundary?</p></div>
+      <div class="ask"><h3>JEV</h3><p>Is the opt-in decision interface appropriate for a later independent evaluation?</p></div>
     </div>
-    <p class="cta">Start with the 60-second offline demo, then inspect the independent comparison.</p><span class="page">07</span>
+    <p class="cta">Start with the beta scorecard, then inspect the offline demo and source contracts.</p><span class="page">07</span>
   </section>
 </body>
 </html>

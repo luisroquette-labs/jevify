@@ -72,6 +72,14 @@ def uninstall(destination: Path) -> None:
     for relative in sorted(receipt["files"], reverse=True):
         (destination / relative).unlink()
     (destination / RECEIPT).unlink()
+    for cache in destination.rglob("__pycache__"):
+        if (
+            cache.is_dir()
+            and not cache.is_symlink()
+            and all(path.is_file() and not path.is_symlink() and path.suffix == ".pyc"
+                    for path in cache.iterdir())
+        ):
+            shutil.rmtree(cache)
     for directory in sorted((path for path in destination.rglob("*") if path.is_dir()), reverse=True):
         if not any(directory.iterdir()):
             directory.rmdir()

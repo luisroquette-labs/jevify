@@ -47,7 +47,7 @@ Napište `/graphify` ve svém AI programovacím asistentovi a ten zmapuje celý 
   <em>Kódová báze FastAPI zmapovaná nástrojem graphify. Každý uzel je koncept, barvy jsou detekované komunity a celek je klikatelný v graph.html.</em>
 </p>
 
-**Začínáme** (30 sekund). Vyžaduje Python 3.10+ a uv (nebo pipx):
+**Začínáme** (30 sekund). Vyžaduje Python 3.11+ a uv (nebo pipx):
 
 ```bash
 uv tool install graphifyy      # install the CLI (or: pipx install graphifyy)

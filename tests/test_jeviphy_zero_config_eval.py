@@ -8,6 +8,18 @@ from tools.jeviphy_zero_config_eval import score, validate_manifest
 
 
 MANIFEST = Path(__file__).resolve().parents[1] / "benchmarks/jeviphy-zero-config/manifest.json"
+PUBLIC_SCORE = Path(__file__).resolve().parents[1] / "benchmarks/jeviphy-zero-config/results/score.json"
+
+
+def test_public_score_is_a_complete_passing_aggregate():
+    payload = json.loads(PUBLIC_SCORE.read_text(encoding="utf-8"))
+    assert payload["status"] == "pass"
+    assert payload["attempts"] == payload["successes"] == 30
+    assert payload["exact_matches"] == payload["exact_outputs"] == 24
+    assert payload["interaction_required"] == 0
+    assert payload["failed_cases"] == []
+    assert payload["median_overhead_fraction"] <= 0.10
+    assert payload["p95_overhead_fraction"] <= 0.15
 
 
 def _manifest():
@@ -61,6 +73,21 @@ def test_score_rejects_missing_pair_and_latency_regression():
         for pair in record["pairs"]:
             pair["jeviphy_ms"] = 116
     assert score(slow, manifest).status == "fail"
+
+
+def test_score_uses_matched_pair_overheads_across_different_repository_speeds():
+    manifest = _manifest()
+    records = _passing_records(manifest)
+    timing_records = [record for record in records if record["pairs"]]
+    for index, record in enumerate(timing_records):
+        direct = 100 if index < len(timing_records) // 2 else 1_000
+        record["pairs"] = [{"direct_ms": direct, "jeviphy_ms": direct * 1.05}] * 5
+
+    result = score(records, manifest)
+
+    assert result.status == "pass"
+    assert result.median_overhead_fraction == pytest.approx(0.05)
+    assert result.p95_overhead_fraction == pytest.approx(0.05)
 
 
 def test_manifest_rejects_changed_denominators():

@@ -1,0 +1,34 @@
+# Jeviphy technical beta evidence
+
+## Decision
+
+Jeviphy is available as a transparent technical beta. It combines Graphify's
+code graph with reviewed memory hints, optional JEV decisions, and independent
+evaluation requests. Graphify remains the graph engine.
+
+## What passed
+
+| Evidence | Result | Candidate |
+| --- | ---: | --- |
+| Clean installation | 20/20 across Ubuntu and macOS | `a2f7aee0` |
+| Zero configuration | 30/30 with no interaction | `a2f7aee0` |
+| Graphify compatibility | pass | `a2f7aee0` |
+| Local suite | 8,601 tests passed | release checkpoint |
+
+GitHub CI later ran 8,602 tests per supported Python interpreter on the PR SHA.
+The public [machine-readable scorecard](../benchmarks/jeviphy-beta/scorecard.json)
+contains the evidence hashes.
+
+## What stopped
+
+- Product benchmark v13: stopped at 0/60 after the beta decision.
+- Product benchmark v11: eight pairs, diagnostic only.
+- Paid JEV: optional and off by default. No performance claim is attached to it.
+
+## Review requests
+
+- **Graphify:** review whether the adapter preserves graph semantics and fallback behavior.
+- **Claude Mem:** review the bounded `source_paths` interoperability contract and privacy boundary.
+- **JEV:** review the opt-in decision interface and evaluation protocol without treating diagnostic data as proof.
+
+No current material makes a product-advantage claim over Graphify.

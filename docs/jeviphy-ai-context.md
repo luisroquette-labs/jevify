@@ -1,19 +1,22 @@
 ---
 name: jeviphy-project-context
 purpose: Give coding agents a compact, evidence-bounded description of Jeviphy.
-status: experimental
+status: technical-beta
 primary_audiences:
   - Claude Code
   - Codex
   - Graphify maintainers
   - Claude Mem maintainers
+  - JEV maintainers
 ---
 
 # Jeviphy context for AI agents
 
 ## Short description
 
-Jeviphy is an open-source Graphify fork and assistant skill. It combines Graphify's existing code graph with source paths from reviewed project memory. Its validated experiment is an offline, source-cited retrieval path called `fast-source`. Paid Jev reranking is optional and has not shown a measured gain.
+Jeviphy is an open-source Graphify fork and assistant skill. It combines
+Graphify's code graph with validated source paths from reviewed project memory.
+The default workflow is offline. JEV relevance decisions are optional.
 
 ## Component boundaries
 
@@ -21,67 +24,47 @@ Jeviphy is an open-source Graphify fork and assistant skill. It combines Graphif
 | --- | --- | --- |
 | Graphify | Build and query the structural code graph | Navigation evidence, not runtime proof |
 | Claude Mem or approved export | Supply selected observations and reviewed `source_paths` | Memory is a hint, not current source truth |
-| Jeviphy runner | Validate paths, build bounded candidates, run comparison modes | Must preserve Graphify fallback |
-| Jev via OpenRouter | Optional relevance decisions | Off by default; requires explicit paid-use approval |
+| Jeviphy runner | Validate paths, build bounded candidates, preserve fallback | Must not alter the structural graph |
+| JEV via OpenRouter | Optional relevance decisions | Off by default; paid use requires explicit approval |
 | Coding agent | Inspect cited source and report conclusions | Separate graph suggestions, source confirmation, and runtime facts |
 
-## Modes
+## Beta evidence ledger
 
-### `question`
-
-The unchanged Graphify query arm and baseline.
-
-### `memory`
-
-Experimental bounded candidate mode. With reviewed paths, it keeps the first eight question nodes and fills up to two slots with memory-scored nodes from cited files. Without usable path-scored nodes, it falls back to the earlier seven-question/three-memory allocation. It has exploratory candidate-retrieval evidence only.
-
-### `fast-source`
-
-Optional offline source-cited mode. It scores nodes inside cited files in one pass and uses the best three as Graphify traversal seeds. It delegates directly to Graphify when source evidence is missing and uses the unseeded answer path for invalid decisions. This is the mode covered by the independent Click result.
-
-## Evidence ledger
-
-| Status | Finding | Source |
-| --- | --- | --- |
-| Confirmed for one frozen synthetic cohort | Exact top-five targets: 11/40 Jeviphy vs 2/40 Graphify | [Independent comparison](jeviphy-independent-complete-workflow-20261018.md) |
-| Confirmed for the same cohort | Overall p95: 212.95 ms Jeviphy vs 275.69 ms Graphify | [Independent comparison](jeviphy-independent-complete-workflow-20261018.md) |
-| Confirmed for the same cohort | 198/200 faster source pairs; byte-identical controls | [Independent comparison](jeviphy-independent-complete-workflow-20261018.md) |
-| Failed | Paid Jev pilot left top-five hits at 4/19 and added network latency | [Roadmap](jeviphy-roadmap.md) |
-| Unproven | Better results on real memory, every repository, or end-to-end agent productivity | [Evaluation record](jev-memory-pilot-evaluation.md) |
+| Finding | Result | Scope |
+| --- | ---: | --- |
+| Clean installation | 20/20 | Ubuntu and macOS, candidate `a2f7aee0` |
+| Zero configuration | 30/30 | no interaction, candidate `a2f7aee0` |
+| Graphify compatibility | pass | pinned candidate receipt |
+| Local suite | 8,601 passed | release checkpoint |
+| Product benchmark v13 | 0/60, stopped | no product claim |
+| Product benchmark v11 | 8 pairs | diagnostic only |
 
 ## Allowed public phrasing
 
-- “Jeviphy performed better on the measured retrieval and latency points in this frozen synthetic Click experiment.”
-- “The result is promising for local source-cited code retrieval.”
-- “The local workflow uses Graphify and falls back to the original query when source hints are unavailable.”
+- “Jeviphy is available as a transparent technical beta.”
+- “20 of 20 clean installation attempts passed on Ubuntu and macOS.”
+- “30 of 30 zero-configuration cases completed without interaction.”
+- “The pinned candidate passed the Graphify compatibility check.”
+- “8,601 local tests passed.”
 
 ## Prohibited conclusions
 
-- Do not claim that Jeviphy universally beats, replaces, or makes Graphify obsolete.
-- Do not attribute the measured speed or retrieval result to the paid Jev model.
-- Do not claim a measured gain on real Claude Mem data or real developer productivity.
+- Do not claim a product advantage over Graphify.
+- Do not attribute a measured gain to JEV.
+- Do not treat the eight v11 pairs as public evidence.
 - Do not treat graph edges or memory statements as current runtime proof.
-- Do not send private memory, source excerpts, or paid API requests without the user's explicit approval for that exact data class and cost.
+- Do not send private memory, source excerpts, or paid API requests without explicit approval.
 
 ## Operational rules
 
 1. Confirm `graphify-out/graph.json` matches `git rev-parse HEAD` before using it.
 2. Retrieve only user-selected observations through an approved bridge or export.
-3. Keep private corpora and payloads outside Git with directory mode `0700` and file mode `0600`.
-4. Run the unseeded Graphify baseline before assisted modes.
-5. Verify cited source before presenting a conclusion, and require runtime evidence for runtime claims.
-
-## Quick verification
-
-```bash
-uv run --frozen python -m tools.jeviphy_demo
-uv run --frozen pytest tests/test_jeviphy_demo.py tests/test_jeviphy_skill.py -q
-```
-
-The first command is a synthetic integration demonstration. It is not a benchmark. Use the linked independent report for measured claims.
+3. Keep private corpora outside Git with directory mode `0700` and file mode `0600`.
+4. Verify cited source before presenting a conclusion.
+5. Keep paid JEV off unless the user approves the exact data and cost scope.
 
 ## Current collaboration questions
 
-- Graphify: should source-seeded traversal be an upstream option or an external adapter?
-- Claude Mem: should reviewed observations expose optional `source_paths` for downstream tools?
-- Independent testers: can the frozen protocol reproduce on another pinned repository?
+- Graphify: does the adapter preserve graph semantics and fallback behavior?
+- Claude Mem: is optional reviewed `source_paths` metadata a safe boundary?
+- JEV: is the opt-in decision interface appropriate for later independent evaluation?

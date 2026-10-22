@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "attempts": [
+    {"os": "Ubuntu", "host": "claude", "repeat": 5},
+    {"os": "Ubuntu", "host": "codex", "repeat": 5},
+    {"os": "macOS", "host": "claude", "repeat": 5},
+    {"os": "macOS", "host": "codex", "repeat": 5}
+  ]
+}

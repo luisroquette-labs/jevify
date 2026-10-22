@@ -4,18 +4,32 @@
 
 **Goal:** Convert Jeviphy's proven retrieval improvement into a mechanically scored product, usability, compatibility, and reproduction decision before any GTM campaign.
 
-**Architecture:** Preserve the frozen v2 retrieval result and Graphify engine. Add the missing bridge from mini-swe-agent predictions to official SWE-bench evaluation, assemble every evidence source into one immutable report, and let the existing scorecard choose the strongest permitted claim. Run expensive work in a GitHub Codespace; keep default Jeviphy offline and local-first.
+**Architecture:** Preserve the frozen v2 retrieval result and Graphify engine. The original plan used remote product evaluation; the closeout decision below supersedes those execution steps. Keep default Jeviphy offline and local-first.
 
-**Tech Stack:** Python 3.10+, pytest, standard library, mini-swe-agent, SWE-bench Docker harness, GitHub Codespaces through `codespace-manager`, GitHub Actions for lightweight checks, existing Graphify and Jeviphy modules.
+**Tech Stack:** Python 3.10+, pytest, standard library, GitHub Actions for lightweight checks, and the existing Graphify and Jeviphy modules. Historical benchmark tooling remains documented below but is not active release work.
 
 **Spec:** `.specs/tasks/draft/jeviphy-pre-gtm-evidence.feature.md`
+
+## Closeout plan - transparent technical beta
+
+The owner ended the paid product benchmark and selected a technical beta. Do not
+restart the benchmark, provision a Codespace, or call a paid API.
+
+- [x] Preserve the stopped v13 state at 0/60.
+- [x] Classify the eight v11 pairs as diagnostic only.
+- [x] Publish the beta scorecard for installation 20/20, zero configuration 30/30, compatibility, and 8,601 local tests.
+- [x] Replace comparative claims in current documentation, presentation, and public page.
+- [ ] Run local gates through `mac-gate`, update PR #32, wait for checks, and integrate.
+
+The historical implementation tasks below document how the evidence tooling was
+built. They are not instructions to resume the stopped benchmark.
 
 ## Global Constraints
 
 - Preserve benchmark v2 manifest SHA `ce54fe1c5c531d10947ea363a05cbb0ed6dcd0336324752b03276306713584ac` and Graphify pin `4342e67107f77db54098d7873b563ff20830dcb8`; changed inputs create benchmark v3.
 - Preserve the published retrieval result and its raw artifact hashes; never rewrite historical results with a new candidate.
 - A trajectory, submitted patch, zero exit code, or retrieval hit is not product-task success; only the official SWE-bench evaluator decides success.
-- Default Jeviphy performs no paid call. Live execution requires current-conversation approval, project-scoped credentials, positive call and cost ceilings, and a fresh private output directory.
+- Default Jeviphy performs no paid call. Live execution requires current-conversation approval, project-scoped credentials, positive call ceilings and cost stop thresholds, and a fresh private output directory.
 - Product generation, Docker evaluation, full suite, and install matrices run on GitHub compute; do not run them directly on the Mac.
 - Typecheck, lint, and focused tests use the project's Python equivalents; when local execution is needed, use `mac-gate`. Do not add a dependency unless the official evaluator requires it in the remote run environment.
 - Tasks 1–6 form one implementation task with one branch and one PR to `jeviphy`. Task 7 starts only after that merge and uses its own beta-evidence branch and one PR. Own both reviews, checks, merges, and post-merge verification without asking Luis to review.
@@ -43,7 +57,7 @@ Already complete and retained:
 - Docker product runner with cost preflight;
 - CI, CodeQL, Ruff, Bandit, and `pip-audit` gates.
 
-Remaining critical path:
+Historical critical path before the beta closeout:
 
 1. turn generated predictions into officially evaluated product pairs;
 2. run the frozen product arms remotely under an approved provider budget;
@@ -188,11 +202,11 @@ Map `generation_seconds + evaluation_seconds` to `duration_ms`. Copy token count
 
 - [ ] **Step 7: Enforce provider and global limits**
 
-Treat the validated CLI ceilings as totals for the complete candidate run. Before every paid arm, count completed paid arms and sum their decimal `cost_usd` values from the validated journal. Compute `remaining_calls = max_agent_calls - completed_calls` and `remaining_cost = max_cost_usd - spent_cost`; reject missing, malformed, negative, duplicated, or uncertain cost records before starting another arm. Set `MSWEA_GLOBAL_CALL_LIMIT` and `MSWEA_GLOBAL_COST_LIMIT` to those remaining values, never the original totals. Refuse an existing `preds.json`, evaluator directory, or sealed report in a fresh run root. Preserve resume only through the append-only arm journal with identical pins.
+Treat the validated CLI ceilings as totals for the complete candidate run. Before every paid arm, count completed paid arms and sum their decimal `cost_usd` values from the validated journal. Compute `remaining_arms = max_agent_arms - completed_arms` and `remaining_cost = max_cost_usd - spent_cost`; reject missing, malformed, negative, duplicated, or uncertain cost records before starting another arm. Set `MSWEA_GLOBAL_CALL_LIMIT` to the frozen per-arm `agent.step_limit` and `MSWEA_GLOBAL_COST_LIMIT` to the remaining total cost. Refuse an existing `preds.json`, evaluator directory, or sealed report in a fresh run root. Preserve resume only through the append-only arm journal with identical pins.
 
-Add `--max-new-arms` with a positive upper bound of 12. Count only arms absent from the validated journal. Stop successfully after the bound, flush and fsync the journal, and leave final sealing unavailable until the expected 240-arm set is complete.
+Add `--max-new-arms` with a positive upper bound of 12. The pre-GTM runner uses two arms so every paired case becomes a remote checkpoint. Count only arms absent from the validated journal, flush and fsync the journal, and leave final sealing unavailable until the expected 60-arm set is complete.
 
-Add a regression test that runs two simulated chunks and proves the second receives the original ceiling minus the first chunk's calls and decimal cost. A journal arm without provider cost must block the next paid chunk rather than assuming zero.
+Add a regression test that runs two simulated chunks and proves both receive the frozen per-arm call ceiling while the second receives the original total cost ceiling minus the first arm's decimal cost. A journal arm without provider cost must block the next paid chunk rather than assuming zero.
 
 - [ ] **Step 8: Validate and commit**
 
@@ -432,15 +446,15 @@ Commit the validator and documentation. External receipts arrive later through t
 
 - [ ] **Step 1: Freeze and print the execution preview without a provider key**
 
-In the Codespace, validate both arm datasets, then print only: candidate SHA, manifest hash, both dataset hashes, model name, case count `120`, arm count `240`, per-arm cost limit, maximum total cost, Docker version, and output path. Verify the checkout is clean and the output path does not contain an earlier run. Do not pool the earlier Modal or partial Docker outputs.
+In the Codespace, validate both complete arm datasets, then print only: candidate SHA, manifest hash, selected-case hash, both dataset hashes, model name, case count `30`, arm count `60`, chunk size, per-arm cost stop threshold, aggregate cost stop threshold, Docker version, and output path. Verify the checkout is clean and the output path does not contain an earlier run. Do not pool the earlier Modal or partial Docker outputs.
 
 - [ ] **Step 2: Run a two-arm live canary under its own approval**
 
-Before the full run, request approval for exactly two paid calls and the configured two-arm maximum. Run one case chosen by a manifest hash before outputs are viewed. Require both predictions, both official evaluations, a sealed pair, and a scorecard-readable record. Discard the canary from the 120-case denominator and use a new output directory for the candidate run.
+Before the full run, request approval for exactly two paid agent arms, up to 320 internal model calls under the frozen 160-step limit, and the configured two-arm maximum of `$0.32`. Run one case chosen by a manifest hash before outputs are viewed. Require both predictions, both official evaluations, a sealed pair, and a scorecard-readable record. Discard the canary from the 30-case denominator and use a new output directory for the candidate run. The earlier four-arm 80-step pilot is diagnostic evidence only because both Jeviphy arms exhausted that artificial ceiling before evaluation.
 
 - [ ] **Step 3: Stop at the full paid-use boundary**
 
-Obtain current-conversation approval for exactly 240 calls and the calculated maximum. At the current `agent.cost_limit: 0.08`, the ceiling is `$19.20`; recalculate from the frozen configuration rather than hard-coding it. Do not infer approval from the canary, an earlier conversation, or a GitHub/AWS compute authorization.
+Obtain current-conversation approval for exactly 60 paid agent arms, up to 9,600 internal model calls under the frozen 160-step limit, and the calculated maximum. At `agent.cost_limit: 0.16`, the ceiling is `$9.60`; recalculate from the frozen configuration rather than hard-coding it. The owner authorized the spend required to complete this benchmark in the current conversation. Do not infer future approval from the canary, an earlier conversation, or a GitHub/AWS compute authorization.
 
 - [ ] **Step 4: Run the serial generation and official evaluation**
 
@@ -452,12 +466,13 @@ uv run --frozen python -m tools.jeviphy_product_batch \
   --cases "$PRIVATE_ROOT/all-cases.json" \
   --output-dir "$PRIVATE_OUTPUT" \
   --allow-network-agent \
-  --max-agent-calls 240 \
-  --max-cost-usd 19.20 \
-  --max-new-arms 12
+  --max-agent-arms 60 \
+  --max-cost-usd 9.60 \
+  --max-new-arms 2 \
+  --case-limit 30
 ```
 
-Run in chunks with `--max-new-arms 12`. The runner alternates arms, evaluates each prediction officially, journals each arm, and stops on provider or evaluation infrastructure failure. Resume is allowed only with identical pins. `codespace-manager` must stop the Codespace after each chunk; never leave a benchmark command detached.
+Run in paired chunks with `--max-new-arms 2`. Each already-serial arm uses `swebench-single`, derives `preds.json` from the saved trajectory, evaluates the prediction officially, journals the arm, and stops on provider or evaluation infrastructure failure. Set `MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=1`; uncertain provider timeouts are never retried. Resume is allowed only with identical pins. `codespace-manager` must stop the Codespace after each chunk; never leave a benchmark command detached.
 
 - [ ] **Step 5: Seal and score without tuning**
 
@@ -504,22 +519,19 @@ Show automatic repository discovery, question selection, offline Graphify fallba
 - Product also passes, reproduction pending: internal candidate; no public superiority claim.
 - Every benchmark gate passes: the release candidate may enter private beta with the exact reproduced benchmark claim.
 
-- [ ] **Step 4: Run final repository gates**
+- [x] **Step 4: Run final repository gates**
 
-In the task Codespace:
+On the Mac through the shared gate:
 
 ```bash
-uv sync --all-extras --frozen
-uv run --frozen pytest -q
-uv run --frozen ruff check .
-uv run --frozen pip-audit --strict
+~/.local/bin/mac-gate zsh -lc 'uv sync --all-extras --frozen && uv run --frozen ruff check . && uv run --frozen pytest tests/ -q --tb=short && uv run --frozen pip-audit --strict'
 ```
 
-Run `graphify update .` remotely with provider keys unset. The full suite must match the candidate SHA. Do not use a local `next build`; this repository has no Vercel application gate.
+Run `graphify update .` locally with provider keys unset. Do not run a local build; this repository has no Vercel application gate.
 
 - [ ] **Step 5: Push one PR and integrate autonomously**
 
-Push the task branch, open one PR to `jeviphy`, wait for CI and CodeQL on the latest SHA, review the diff, merge, and verify post-merge CI on the merge commit. Stop the clean Codespace afterward and retain it only if evidence needed for reproduction remains there.
+Push the task branch to the existing PR #32, wait for CI and CodeQL on the latest SHA, review the diff, merge, and verify post-merge CI on the merge commit. Do not provision a Codespace.
 
 ### Task 7: Run the Private Beta and Gate Mass GTM
 
@@ -573,6 +585,8 @@ Proceed only with at least five participants, at least four complete successes, 
 - **Pass 4:** no substantial improvement found — corrected the receipt field name and added the already-required chunk limit to the example command; architecture, gates, and task order remained unchanged.
 - **Pass 5:** substantial improvement applied — split engineering/release-candidate work from the later external beta into two sequential task branches and PRs; aligned the declared dataset-validator interfaces with their test examples.
 - **Pass 6:** no substantial improvement found — all 11 spec requirements map to owning tasks, the 39 steps have concrete commands or code, interfaces are consistent, and placeholder/code-fence scans passed.
-- **Pass 7:** substantial improvement applied — made paid call and cost ceilings cumulative across all resume-safe chunks, preventing each new process from resetting and multiplying the approved budget.
-- **Pass 8:** no substantial improvement found — failure, resume, privacy, paired-order, official-evaluation, and claim-boundary reviews found no new design gap; clarified that uncertain cost blocks the very next paid arm.
-- **Pass 9:** no substantial improvement found — verified the frozen manifest hash, current scorecard states, zero-configuration result, file map, interface names, requirement coverage, and executable commands without finding another material change.
+- **Pass 7:** substantial improvement applied — made paid call limits and cost stop thresholds cumulative across all resume-safe chunks, preventing each new process from resetting and multiplying the approved budget.
+- **Pass 8:** substantial improvement applied after the v8 Graphify arm stalled for the full 35-minute wall timeout — reduced the pre-GTM candidate to a deterministic balanced 30-case subset, checkpointed every pair, disabled uncertain model retries, and retained all 120 cases for leakage validation.
+- **Pass 9:** no substantial improvement found — failure, resume, privacy, paired-order, official-evaluation, and claim-boundary reviews found no new design gap; clarified that uncertain cost blocks the very next paid arm.
+- **Pass 10:** no substantial improvement found — verified the frozen manifest hash, current scorecard states, zero-configuration result, file map, interface names, requirement coverage, and executable commands without finding another material change.
+- **Pass 11:** substantial improvement applied after the v9 canary reproduced the batch-mode stall — isolated the provider as healthy, proved the supported single-instance runner reaches the model, and replaced only the deadlocking batch wrapper while preserving the model, environment, prompt, limits, official evaluator, and paired protocol.

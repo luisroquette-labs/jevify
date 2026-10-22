@@ -25,6 +25,8 @@ class RunPins:
     jeviphy_commit: str
     python_version: str
     command_sha256: str
+    graphify_dataset_sha256: str | None = None
+    jeviphy_dataset_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,24 @@ class ArmRecord:
     output_tokens: int | None = None
     top5_hits: int | None = None
     first_hit: bool | None = None
+
+
+@dataclass(frozen=True)
+class ProductArmRecord:
+    arm: str
+    instance_id: str
+    status: str
+    success: bool
+    generation_seconds: float
+    evaluation_seconds: float
+    prediction_sha256: str
+    patch_sha256: str
+    trajectory_sha256: str
+    input_tokens: int | None
+    output_tokens: int | None
+    cost_usd: str | None
+    resolved: bool
+    diagnostic: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +86,90 @@ def file_sha256(path: Path) -> str:
 
 def command_sha256(argv: Sequence[str]) -> str:
     return sha256_bytes(json.dumps(list(argv), separators=(",", ":")).encode())
+
+
+def load_prediction(path: Path, instance_id: str) -> dict:
+    """Load exactly one prediction for an expected SWE-bench instance."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(raw, dict) and instance_id in raw and isinstance(raw[instance_id], dict):
+        rows = list(raw.values())
+    elif isinstance(raw, dict) and "instance_id" in raw:
+        rows = [raw]
+    elif isinstance(raw, list):
+        rows = raw
+    else:
+        rows = []
+    matches = [row for row in rows if isinstance(row, dict) and row.get("instance_id") == instance_id]
+    if len(matches) != 1 or len(rows) != 1:
+        raise ValueError(f"expected exactly one prediction for {instance_id}")
+    patch = matches[0].get("model_patch")
+    if not isinstance(patch, str) or not patch.strip():
+        raise ValueError(f"prediction for {instance_id} has an empty patch")
+    return matches[0]
+
+
+def _model_stats(trajectory: Path) -> tuple[int | None, int | None, str | None]:
+    raw = json.loads(trajectory.read_text(encoding="utf-8"))
+    stats = raw.get("info", {}).get("model_stats", {}) if isinstance(raw, dict) else {}
+    input_tokens = stats.get("input_tokens")
+    output_tokens = stats.get("output_tokens")
+    cost = stats.get("instance_cost")
+    return (
+        input_tokens if isinstance(input_tokens, int) and input_tokens >= 0 else None,
+        output_tokens if isinstance(output_tokens, int) and output_tokens >= 0 else None,
+        str(cost) if isinstance(cost, (int, float, str)) and str(cost).strip() else None,
+    )
+
+
+def evaluate_prediction(
+    arm: str,
+    instance_id: str,
+    prediction_path: Path,
+    report_path: Path,
+    trajectory_path: Path,
+    *,
+    generation_seconds: float,
+    evaluation_seconds: float,
+    run_root: Path,
+) -> ProductArmRecord:
+    """Turn official SWE-bench results into a hashed, fail-closed arm record."""
+    prediction = load_prediction(prediction_path, instance_id)
+    if not trajectory_path.is_file() or not report_path.is_file():
+        raise ValueError("prediction requires trajectory and evaluator report")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    resolved_ids = report.get("resolved_ids")
+    completed_ids = report.get("completed_ids")
+    if not isinstance(resolved_ids, list) or not isinstance(completed_ids, list):
+        raise ValueError("evaluator report is missing official result lists")
+    resolved = instance_id in resolved_ids
+    infrastructure = instance_id in report.get("infra_failure_ids", [])
+    evaluator_error = instance_id in report.get("error_ids", [])
+    status = "infrastructure_failed" if infrastructure else "failed" if evaluator_error else "completed"
+    if not infrastructure and not evaluator_error and instance_id not in completed_ids:
+        raise ValueError(f"evaluator report does not contain completed instance {instance_id}")
+    input_tokens, output_tokens, cost = _model_stats(trajectory_path)
+    patch = prediction["model_patch"].encode("utf-8")
+    diagnostic = None
+    if infrastructure:
+        diagnostic = f"official evaluator failure: {report_path.relative_to(run_root)}"
+    elif evaluator_error:
+        diagnostic = f"official evaluator rejected prediction: {report_path.relative_to(run_root)}"
+    return ProductArmRecord(
+        arm=arm,
+        instance_id=instance_id,
+        status=status,
+        success=bool(resolved and not infrastructure and not evaluator_error),
+        generation_seconds=generation_seconds,
+        evaluation_seconds=evaluation_seconds,
+        prediction_sha256=file_sha256(prediction_path),
+        patch_sha256=sha256_bytes(patch),
+        trajectory_sha256=file_sha256(trajectory_path),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost,
+        resolved=bool(resolved),
+        diagnostic=diagnostic,
+    )
 
 
 def current_pins(manifest: Path, graphify_commit: str, repo: Path, argv: Sequence[str]) -> RunPins:
@@ -137,9 +241,9 @@ def run_command_arm(
 
 def validate_live_limits(*, allow_network_agent: bool, max_agent_calls: int, max_cost_usd: float) -> None:
     if allow_network_agent and (max_agent_calls < 1 or max_cost_usd <= 0):
-        raise ValueError("network agent requires positive call and cost ceilings")
+        raise ValueError("network agent requires positive call limits and cost stop thresholds")
     if not allow_network_agent and (max_agent_calls or max_cost_usd):
-        raise ValueError("cost ceilings require --allow-network-agent")
+        raise ValueError("cost stop thresholds require --allow-network-agent")
 
 
 def append_pair(path: Path, pins: RunPins, pair: PairRecord) -> None:
