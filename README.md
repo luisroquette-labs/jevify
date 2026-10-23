@@ -1,18 +1,27 @@
 # Jevify
 
+> [!IMPORTANT]
+> **Status: product shelved on 2026-10-22.** Jevify is preserved as a completed experiment,
+> not an active product. There is no planned development, support, or product launch. Graphify
+> remains the structural engine; the evaluations did not establish enough additional value from
+> Jevify or JEV to justify a separate product. See the [closure record](docs/jevify-sunset.md).
+
 <p align="center">
   <a href="https://luisroquette-labs.github.io/jevify/"><img src="docs/logo-text.svg" width="400" alt="Jevify — memory-guided code search for Claude Code and Codex"/></a>
 </p>
 
-This fork is the home of [Jevify for Claude Code and Codex](skills/jevify/SKILL.md). Jevify orchestrates the complete applicable Graphify workflow, verifies that the graph is current, and adds prioritized questions and optional reviewed memory. Jevify is available as a transparent technical beta. Graphify remains the structural engine; JEV remains optional.
+This fork preserves [Jevify for Claude Code and Codex](skills/jevify/SKILL.md). Jevify orchestrated the applicable Graphify workflow, verified graph freshness, and added prioritized questions and optional reviewed memory. The project is no longer an active technical beta. Graphify remains the structural engine; JEV remains optional and experimentally unproven here.
 
-> **Current Jev requirement:** offline Graphify and Jevify features need no provider account. Using Jev live currently requires each user to have their own OpenRouter account, supply their own project-scoped API key as `JEV_MEMORY_PILOT_API_KEY`, and pay for their own requests. Jevify does not currently provide hosted Jev access, a shared key, or an OAuth sign-in flow.
+> **Historical JEV requirement:** offline Graphify and Jevify features needed no provider account. Using JEV live required each user to have their own OpenRouter account, supply their own project-scoped API key as `JEV_MEMORY_PILOT_API_KEY`, and pay for their own requests. Jevify never provided hosted JEV access, a shared key, or an OAuth sign-in flow.
 
-**Verified beta evidence:** 20/20 clean installs across Ubuntu and macOS, 30/30 zero-configuration cases without interaction, a passing Graphify compatibility receipt, three bounded offline update cases, and 8,647 local tests. The paid product benchmark stopped at 0/60; eight earlier pairs are diagnostic only. Read the [beta evidence and limits](docs/jevify-beta-evidence.md), the [update evaluation](docs/jevify-graphify-amplification-evaluation.md), inspect the [scorecard](benchmarks/jevify-beta/scorecard.md), or [see the live beta page](https://luisroquette-labs.github.io/jevify/).
+**Verified beta evidence:** 20/20 clean installs across Ubuntu and macOS, 30/30 zero-configuration cases without interaction, a passing Graphify compatibility receipt, three bounded offline update cases, and 8,647 local tests. The paid product benchmark stopped at 0/60; eight earlier pairs are diagnostic only. Read the [beta evidence and limits](docs/jevify-beta-evidence.md), the [update evaluation](docs/jevify-graphify-amplification-evaluation.md), inspect the [scorecard](benchmarks/jevify-beta/scorecard.md), or [see the archived project page](https://luisroquette-labs.github.io/jevify/).
 
 For Graphify, Claude Mem, or JEV review, use the [seven-slide visual presentation](docs/jevify-presentation.pdf), its [editable HTML source](docs/jevify-presentation.html), the [speaker notes](docs/jevify-presentation.md), the [one-page participant brief](docs/jevify-participant-brief.md), and the [evidence-bounded context for AI agents](docs/jevify-ai-context.md).
 
-## Use Jevify
+## Historical usage — unsupported
+
+Do not adopt Jevify as an actively maintained product. The instructions below are retained only
+to make the experiment reproducible.
 
 Jevify uses Graphify to build, update, diagnose, report, visualize, and query the code graph. It adds verified freshness, prioritized questions, selected Claude Mem observations, and optional JEV relevance decisions. The Graphify engine remains a dependency; JEV calls are off by default.
 
