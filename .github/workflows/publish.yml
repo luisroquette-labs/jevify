@@ -21,6 +21,9 @@ permissions:
 
 jobs:
   publish:
+    # Archive/evidence releases are not package releases. Only v-prefixed tags
+    # may enter the PyPI job; workflow_dispatch remains available for maintainers.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
     name: Build and publish graphifyy
     runs-on: ubuntu-latest
     environment:
