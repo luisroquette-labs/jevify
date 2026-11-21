@@ -14,6 +14,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: comment-ratchet
+        name: Python comment ratchet
+        entry: python scripts/check_comments.py
+        language: system
+        pass_filenames: false
+        always_run: true
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.14
