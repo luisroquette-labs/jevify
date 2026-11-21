@@ -21,14 +21,8 @@ try:
 except Exception:
     __version__ = "unknown"
 
-# Output directory — override with GRAPHIFY_OUT env var for worktrees or shared-output setups.
-# Accepts a relative name ("graphify-out-feature") or an absolute path ("/shared/graphify-out").
-# Defined once in graphify.paths so the security/callflow path guards honour the
-# same override (#1423).
 from graphify.paths import GRAPHIFY_OUT as _GRAPHIFY_OUT
 
-# Install/uninstall subsystem moved to graphify/install.py; re-exported here so
-# `from graphify.__main__ import <name>` keeps working unchanged.
 from graphify.install import (  # noqa: E402,F401
     dispatch_install_cli,
     _agents_install,

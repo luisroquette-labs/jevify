@@ -17,10 +17,9 @@ import struct
 import numpy as np
 
 
-_MP = np.uint64((1 << 61) - 1)  # Mersenne prime for the hash family
-_MH = np.uint64(0xFFFF_FFFF)    # mask to 32-bit values
+_MP = np.uint64((1 << 61) - 1)
+_MH = np.uint64(0xFFFF_FFFF)
 
-# One (a, b) coefficient array per num_perm, shared across all instances.
 _MH_COEFFS: dict[int, tuple[np.ndarray, np.ndarray]] = {}
 
 
