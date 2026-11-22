@@ -28,7 +28,6 @@ def _run(args, cwd):
 def _assert_one_line(path: Path):
     text = path.read_text(encoding="utf-8")
     assert len(text.splitlines()) == 1, f"{path.name} spans {len(text.splitlines())} lines"
-    # compact separators: no space after ',' or ':' outside string values
     assert '": ' not in text and '", ' not in text and "}, " not in text
     return json.loads(text)
 

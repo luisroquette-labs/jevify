@@ -37,7 +37,6 @@ def test_markdown_extractor_does_not_import_graphify_extract():
 
 
 def test_active_scan_root_defaults_to_none():
-    # A fresh process (no extraction in flight) has no active root.
     assert base_mod.active_scan_root() is None
 
 

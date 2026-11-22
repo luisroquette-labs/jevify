@@ -47,7 +47,6 @@ def test_valid_graph_still_loads(tmp_path):
         '{"nodes": [{"id": "a", "label": "a", "file_type": "code"}], "edges": []}',
         encoding="utf-8",
     )
-    # none of these should raise
     load_graph(p)
     _read_json_file(p)
     build_merge([], graph_path=p, dedup=False)
